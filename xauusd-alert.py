@@ -156,3 +156,5 @@ if __name__ == "__main__":
             print(e)
 
         time.sleep(60)
+
+send_telegram("🚀 Test Alert")

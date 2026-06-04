@@ -1,98 +1,158 @@
-import pandas as pd
+import time
+import json
+import os
 import requests
-from datetime import datetime
+import pandas as pd
+import yfinance as yf
 
-ACCOUNT_ID = "YOUR_ACCOUNT"
-API_KEY = "YOUR_API_KEY"
+# =====================
+# CONFIG
+# =====================
 
-headers = {
-    "Authorization": f"Bearer {API_KEY}"
-}
+SYM = "GC=F"  # Gold Futures
 
-url = "https://api-fxtrade.oanda.com/v3/instruments/XAU_USD/candles"
+TELEGRAM_TOKEN = "8954966906:AAFRvWdzB2zQ5qZ3M3SGljsXUFHdUuDnkbI"
+TELEGRAM_CHAT_ID = "8911413063"
 
-params = {
-    "granularity": "M15",
-    "count": 300,
-    "price": "M"
-}
+STATE_FILE = "state.json"
 
-r = requests.get(url, headers=headers, params=params)
-data = r.json()
+# =====================
+# TELEGRAM
+# =====================
 
-candles = []
-
-for c in data["candles"]:
-    if c["complete"]:
-        candles.append({
-            "time": c["time"],
-            "open": float(c["mid"]["o"]),
-            "high": float(c["mid"]["h"]),
-            "low": float(c["mid"]["l"]),
-            "close": float(c["mid"]["c"]),
-        })
-
-df = pd.DataFrame(candles)
-
-# -------------------------
-# Heikin Ashi
-# -------------------------
-
-ha_close = (
-    df["open"] +
-    df["high"] +
-    df["low"] +
-    df["close"]
-) / 4
-
-ha_open = [df["open"].iloc[0]]
-
-for i in range(1, len(df)):
-    ha_open.append(
-        (ha_open[i-1] + ha_close.iloc[i-1]) / 2
-    )
-
-df["ha_open"] = ha_open
-df["ha_close"] = ha_close
-
-# -------------------------
-# EMA
-# -------------------------
-
-df["ema9"] = df["ha_close"].ewm(span=9).mean()
-df["ema200"] = df["ha_close"].ewm(span=200).mean()
-
-# -------------------------
-# Cross Up Check
-# -------------------------
-
-prev = df.iloc[-2]
-curr = df.iloc[-1]
-
-cross_up = (
-    prev["ema9"] <= prev["ema200"] and
-    curr["ema9"] > curr["ema200"]
-)
-
-if cross_up:
-    print(
-        f"[ALERT] XAUUSD HA M15 EMA9 crossed ABOVE EMA200 at {curr['time']}"
-    )
-
-    # ส่ง Telegram
-    TOKEN = "YOUR_BOT_TOKEN"
-    CHAT_ID = "YOUR_CHAT_ID"
-
-    msg = (
-        f"🚀 XAUUSD M15\n"
-        f"EMA9 crossed above EMA200\n"
-        f"Time: {curr['time']}"
-    )
-
+def send_telegram(msg):
     requests.get(
-        f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+        f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
         params={
-            "chat_id": CHAT_ID,
+            "chat_id": TELEGRAM_CHAT_ID,
             "text": msg
-        }
+        },
+        timeout=10
     )
+
+# =====================
+# STATE
+# =====================
+
+def load_state():
+    if not os.path.exists(STATE_FILE):
+        return {"last_signal": None}
+
+    with open(STATE_FILE, "r") as f:
+        return json.load(f)
+
+def save_state(state):
+    with open(STATE_FILE, "w") as f:
+        json.dump(state, f)
+
+# =====================
+# HEIKIN ASHI
+# =====================
+
+def build_heikin_ashi(df):
+
+    ha = pd.DataFrame(index=df.index)
+
+    ha["close"] = (
+        df["Open"] +
+        df["High"] +
+        df["Low"] +
+        df["Close"]
+    ) / 4
+
+    ha_open = []
+
+    for i in range(len(df)):
+        if i == 0:
+            ha_open.append(
+                (df["Open"].iloc[0] + df["Close"].iloc[0]) / 2
+            )
+        else:
+            ha_open.append(
+                (ha_open[i - 1] + ha["close"].iloc[i - 1]) / 2
+            )
+
+    ha["open"] = ha_open
+
+    return ha
+
+# =====================
+# CHECK SIGNAL
+# =====================
+
+def check_signal():
+
+    df = yf.download(
+        SYM,
+        interval="15m",
+        period="10d",
+        auto_adjust=False,
+        progress=False
+    )
+
+    if len(df) < 220:
+        return
+
+    ha = build_heikin_ashi(df)
+
+    ha["ema9"] = ha["close"].ewm(span=9).mean()
+    ha["ema200"] = ha["close"].ewm(span=200).mean()
+
+    prev = ha.iloc[-2]
+    curr = ha.iloc[-1]
+
+    cross_up = (
+        prev["ema9"] <= prev["ema200"]
+        and
+        curr["ema9"] > curr["ema200"]
+    )
+
+    cross_down = (
+        prev["ema9"] >= prev["ema200"]
+        and
+        curr["ema9"] < curr["ema200"]
+    )
+
+    state = load_state()
+
+    if cross_up and state["last_signal"] != "bullish":
+
+        msg = (
+            "🟢 XAUUSD M15\n"
+            "Heikin Ashi EMA9 crossed ABOVE EMA200"
+        )
+
+        send_telegram(msg)
+
+        state["last_signal"] = "bullish"
+        save_state(state)
+
+    elif cross_down and state["last_signal"] != "bearish":
+
+        msg = (
+            "🔴 XAUUSD M15\n"
+            "Heikin Ashi EMA9 crossed BELOW EMA200"
+        )
+
+        send_telegram(msg)
+
+        state["last_signal"] = "bearish"
+        save_state(state)
+
+# =====================
+# MAIN LOOP
+# =====================
+
+if __name__ == "__main__":
+
+    print("Started...")
+
+    while True:
+
+        try:
+            check_signal()
+
+        except Exception as e:
+            print(e)
+
+        time.sleep(60)

@@ -146,6 +146,7 @@ def check_signal():
 if __name__ == "__main__":
 
     print("Started...")
+    send_telegram("🚀 Test Alert")
 
     while True:
 
@@ -156,5 +157,3 @@ if __name__ == "__main__":
             print(e)
 
         time.sleep(60)
-
-send_telegram("🚀 Test Alert")

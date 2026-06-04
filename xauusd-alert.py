@@ -1,4 +1,3 @@
-from datetime import datetime
 import time
 import json
 import os
@@ -6,6 +5,11 @@ import requests
 import pandas as pd
 import yfinance as yf
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+now = datetime.now(
+    ZoneInfo("Asia/Bangkok")
+)
 
 # ====================================
 # CONFIG

@@ -173,7 +173,7 @@ def check_signal():
     if close_above_ema9 and state["ema9_position"] != "above":
 
         send_telegram(
-            f"🟢 XAUUSD M15\n"
+            f"⬆️ XAUUSD M15\n"
             f"HA Close crossed ABOVE EMA9\n"
             f"Trend: {trend}"
         )
@@ -183,7 +183,7 @@ def check_signal():
     elif close_below_ema9 and state["ema9_position"] != "below":
 
         send_telegram(
-            f"🔴 XAUUSD M15\n"
+            f"⬇️ XAUUSD M15\n"
             f"HA Close crossed BELOW EMA9\n"
             f"Trend: {trend}"
         )

@@ -6,6 +6,7 @@ import pandas as pd
 import yfinance as yf
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from dotenv import load_dotenv
 
 # ====================================
 # CONFIG
@@ -13,8 +14,10 @@ from zoneinfo import ZoneInfo
 
 SYM = "GC=F"  # Gold Futures
 
-TELEGRAM_TOKEN = "8954966906:AAFRvWdzB2zQ5qZ3M3SGljsXUFHdUuDnkbI"
-TELEGRAM_CHAT_ID = "8911413063"
+load_dotenv()
+
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 STATE_FILE = "state.json"
 

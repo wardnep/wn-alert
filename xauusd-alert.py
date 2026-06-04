@@ -1,9 +1,11 @@
+from datetime import datetime
 import time
 import json
 import os
 import requests
 import pandas as pd
 import yfinance as yf
+from datetime import datetime
 
 # ====================================
 # CONFIG
@@ -196,18 +198,36 @@ def check_signal():
 # MAIN
 # ====================================
 
+HEARTBEAT_INTERVAL = 86400
+
 if __name__ == "__main__":
 
     send_telegram("🚀 XAU Alert Started")
 
     print("Started...")
 
+    last_heartbeat = 0
+
     while True:
 
         try:
+
+            now = time.time()
+
+            # ส่ง heartbeat ทุก 1 ชั่วโมง
+            if now - last_heartbeat > HEARTBEAT_INTERVAL:
+
+                send_telegram(
+                    f"💓 XAU Alert Alive\n"
+                    f"{datetime.now():%Y-%m-%d %H:%M:%S}"
+                )
+
+                last_heartbeat = now
+
             check_signal()
 
         except Exception as e:
+
             print(e)
 
         time.sleep(60)

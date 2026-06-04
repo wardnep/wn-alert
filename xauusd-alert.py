@@ -7,10 +7,6 @@ import yfinance as yf
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-now = datetime.now(
-    ZoneInfo("Asia/Bangkok")
-)
-
 # ====================================
 # CONFIG
 # ====================================
@@ -214,7 +210,9 @@ if __name__ == "__main__":
 
         try:
 
-            now = datetime.now()
+            now = datetime.now(
+                ZoneInfo("Asia/Bangkok")
+            )
 
             current_time = now.strftime("%H:%M")
 

@@ -145,8 +145,8 @@ def check_signal():
 
 if __name__ == "__main__":
 
-    print("Started...")
     send_telegram("🚀 Test Alert")
+    print("Started...")
 
     while True:
 

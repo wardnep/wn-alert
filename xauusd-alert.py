@@ -180,7 +180,7 @@ def check_signal():
 
         send_telegram(
             f"⬆️ XAUUSD M15\n"
-            f"HA Close crossed ABOVE EMA9\n"
+            f"HA Close ABOVE EMA9\n"
             f"Trend: {trend}"
         )
 
@@ -190,7 +190,7 @@ def check_signal():
 
         send_telegram(
             f"⬇️ XAUUSD M15\n"
-            f"HA Close crossed BELOW EMA9\n"
+            f"HA Close BELOW EMA9\n"
             f"Trend: {trend}"
         )
 

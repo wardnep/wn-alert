@@ -5,9 +5,9 @@ import requests
 import pandas as pd
 import yfinance as yf
 
-# =====================
+# ====================================
 # CONFIG
-# =====================
+# ====================================
 
 SYM = "GC=F"  # Gold Futures
 
@@ -16,38 +16,46 @@ TELEGRAM_CHAT_ID = "8911413063"
 
 STATE_FILE = "state.json"
 
-# =====================
+# ====================================
 # TELEGRAM
-# =====================
+# ====================================
 
-def send_telegram(msg):
-    requests.get(
-        f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-        params={
+def send_telegram(message):
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+
+    requests.post(
+        url,
+        data={
             "chat_id": TELEGRAM_CHAT_ID,
-            "text": msg
+            "text": message
         },
         timeout=10
     )
 
-# =====================
+# ====================================
 # STATE
-# =====================
+# ====================================
 
 def load_state():
+
     if not os.path.exists(STATE_FILE):
-        return {"last_signal": None}
+        return {
+            "ema200_signal": None,
+            "ema9_position": None
+        }
 
     with open(STATE_FILE, "r") as f:
         return json.load(f)
 
 def save_state(state):
+
     with open(STATE_FILE, "w") as f:
         json.dump(state, f)
 
-# =====================
+# ====================================
 # HEIKIN ASHI
-# =====================
+# ====================================
 
 def build_heikin_ashi(df):
 
@@ -69,16 +77,19 @@ def build_heikin_ashi(df):
             )
         else:
             ha_open.append(
-                (ha_open[i - 1] + ha["close"].iloc[i - 1]) / 2
+                (
+                    ha_open[i - 1]
+                    + ha["close"].iloc[i - 1]
+                ) / 2
             )
 
     ha["open"] = ha_open
 
     return ha
 
-# =====================
+# ====================================
 # CHECK SIGNAL
-# =====================
+# ====================================
 
 def check_signal():
 
@@ -101,51 +112,94 @@ def check_signal():
     prev = ha.iloc[-2]
     curr = ha.iloc[-1]
 
-    cross_up = (
+    state = load_state()
+
+    # ==========================
+    # EMA9 CROSS EMA200
+    # ==========================
+
+    cross_up_200 = (
         prev["ema9"] <= prev["ema200"]
         and
         curr["ema9"] > curr["ema200"]
     )
 
-    cross_down = (
+    cross_down_200 = (
         prev["ema9"] >= prev["ema200"]
         and
         curr["ema9"] < curr["ema200"]
     )
 
-    state = load_state()
+    if cross_up_200 and state["ema200_signal"] != "bullish":
 
-    if cross_up and state["last_signal"] != "bullish":
-
-        msg = (
+        send_telegram(
             "🟢 XAUUSD M15\n"
-            "Heikin Ashi EMA9 crossed ABOVE EMA200"
+            "EMA9 crossed ABOVE EMA200"
         )
 
-        send_telegram(msg)
+        state["ema200_signal"] = "bullish"
 
-        state["last_signal"] = "bullish"
-        save_state(state)
+    elif cross_down_200 and state["ema200_signal"] != "bearish":
 
-    elif cross_down and state["last_signal"] != "bearish":
-
-        msg = (
+        send_telegram(
             "🔴 XAUUSD M15\n"
-            "Heikin Ashi EMA9 crossed BELOW EMA200"
+            "EMA9 crossed BELOW EMA200"
         )
 
-        send_telegram(msg)
+        state["ema200_signal"] = "bearish"
 
-        state["last_signal"] = "bearish"
-        save_state(state)
+    # ==========================
+    # HA CLOSE CROSS EMA9
+    # ==========================
 
-# =====================
-# MAIN LOOP
-# =====================
+    close_above_ema9 = (
+        prev["close"] <= prev["ema9"]
+        and
+        curr["close"] > curr["ema9"]
+    )
+
+    close_below_ema9 = (
+        prev["close"] >= prev["ema9"]
+        and
+        curr["close"] < curr["ema9"]
+    )
+
+    trend = (
+        "UPTREND"
+        if curr["ema9"] > curr["ema200"]
+        else "DOWNTREND"
+    )
+
+    if close_above_ema9 and state["ema9_position"] != "above":
+
+        send_telegram(
+            f"🟢 XAUUSD M15\n"
+            f"HA Close crossed ABOVE EMA9\n"
+            f"Trend: {trend}"
+        )
+
+        state["ema9_position"] = "above"
+
+    elif close_below_ema9 and state["ema9_position"] != "below":
+
+        send_telegram(
+            f"🔴 XAUUSD M15\n"
+            f"HA Close crossed BELOW EMA9\n"
+            f"Trend: {trend}"
+        )
+
+        state["ema9_position"] = "below"
+
+    save_state(state)
+
+# ====================================
+# MAIN
+# ====================================
 
 if __name__ == "__main__":
 
-    send_telegram("🚀 Test Alert")
+    send_telegram("🚀 XAU Alert Started")
+
     print("Started...")
 
     while True:

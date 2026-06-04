@@ -198,31 +198,35 @@ def check_signal():
 # MAIN
 # ====================================
 
-HEARTBEAT_INTERVAL = 86400
-
 if __name__ == "__main__":
 
     send_telegram("🚀 XAU Alert Started")
 
     print("Started...")
 
-    last_heartbeat = 0
+    heartbeat_sent = set()
 
     while True:
 
         try:
 
-            now = time.time()
+            now = datetime.now()
 
-            # ส่ง heartbeat ทุก 1 ชั่วโมง
-            if now - last_heartbeat > HEARTBEAT_INTERVAL:
+            current_time = now.strftime("%H:%M")
 
-                send_telegram(
-                    f"💓 XAU Alert Alive\n"
-                    f"{datetime.now():%Y-%m-%d %H:%M:%S}"
-                )
+            if current_time in ["08:00", "14:00", "19:00"]:
 
-                last_heartbeat = now
+                if current_time not in heartbeat_sent:
+
+                    send_telegram(
+                        f"💓 XAU Alert Alive\n"
+                        f"Time: {current_time}"
+                    )
+
+                    heartbeat_sent.add(current_time)
+
+            if current_time == "00:00":
+                heartbeat_sent.clear()
 
             check_signal()
 

@@ -25,7 +25,6 @@ STATE_FILE = "state.json"
 SYMBOL = "XAUUSD"
 EXCHANGE = "OANDA"
 
-# ถ้ามี TradingView account
 TV_USERNAME = os.getenv("TV_USERNAME")
 TV_PASSWORD = os.getenv("TV_PASSWORD")
 
@@ -43,53 +42,89 @@ else:
 # ====================================
 
 def send_telegram(message):
+    """ส่ง message ไป Telegram พร้อม error handling"""
 
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 
-    requests.post(
-        url,
-        data={
-            "chat_id": TELEGRAM_CHAT_ID,
-            "text": message
-        },
-        timeout=10
-    )
+        resp = requests.post(
+            url,
+            data={
+                "chat_id": TELEGRAM_CHAT_ID,
+                "text": message
+            },
+            timeout=10
+        )
+
+        resp.raise_for_status()
+
+    except requests.exceptions.Timeout:
+        print(f"[{datetime.now()}] ⚠️ Telegram timeout")
+
+    except requests.exceptions.HTTPError as e:
+        print(f"[{datetime.now()}] ⚠️ Telegram HTTP error: {e}")
+
+    except Exception as e:
+        print(f"[{datetime.now()}] ⚠️ Telegram error: {e}")
 
 # ====================================
 # STATE
 # ====================================
 
 def load_state():
+    """โหลด state จากไฟล์ ถ้าไฟล์เสียหายหรือไม่มี ให้ return default"""
+
+    default = {
+        "ema200_signal": None,
+        "ema9_position": None,
+        "last_alert_candle": None,
+        "heartbeat_sent": []       # ย้ายเข้า state ให้รอดจาก restart
+    }
 
     if not os.path.exists(STATE_FILE):
+        return default
 
-        return {
-            "ema200_signal": None,
-            "ema9_position": None,
-            "last_alert_candle": None
-        }
+    try:
+        with open(STATE_FILE, "r") as f:
+            state = json.load(f)
 
-    with open(STATE_FILE, "r") as f:
-        return json.load(f)
+        # backfill key ใหม่ที่อาจไม่มีใน state เก่า
+        for key, val in default.items():
+            state.setdefault(key, val)
+
+        return state
+
+    except (json.JSONDecodeError, IOError) as e:
+        print(f"[{datetime.now()}] ⚠️ State file corrupted, resetting. Error: {e}")
+        return default
 
 def save_state(state):
+    """บันทึก state ลงไฟล์ พร้อม error handling"""
 
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f)
+    try:
+        with open(STATE_FILE, "w") as f:
+            json.dump(state, f, indent=2)
+
+    except IOError as e:
+        print(f"[{datetime.now()}] ⚠️ Failed to save state: {e}")
 
 # ====================================
 # HEIKIN ASHI
 # ====================================
 
 def build_heikin_ashi(df):
+    """
+    คำนวณ Heikin Ashi OHLC ครบทั้ง 4 ค่า
+    - HA Close  = (O + H + L + C) / 4
+    - HA Open   = (prev HA Open + prev HA Close) / 2
+    - HA High   = max(High, HA Open, HA Close)
+    - HA Low    = min(Low,  HA Open, HA Close)
+    """
 
     ha = pd.DataFrame(index=df.index)
 
     ha["close"] = (
-        df["open"]
-        + df["high"]
-        + df["low"]
-        + df["close"]
+        df["open"] + df["high"] + df["low"] + df["close"]
     ) / 4
 
     ha_open = []
@@ -97,21 +132,24 @@ def build_heikin_ashi(df):
     for i in range(len(df)):
 
         if i == 0:
-
             ha_open.append(
                 (df["open"].iloc[0] + df["close"].iloc[0]) / 2
             )
-
         else:
-
             ha_open.append(
-                (
-                    ha_open[i - 1]
-                    + ha["close"].iloc[i - 1]
-                ) / 2
+                (ha_open[i - 1] + ha["close"].iloc[i - 1]) / 2
             )
 
     ha["open"] = ha_open
+
+    # เพิ่ม high/low ให้ครบ (จำเป็นถ้าขยาย logic ในอนาคต)
+    ha["high"] = pd.concat(
+        [df["high"], ha["open"], ha["close"]], axis=1
+    ).max(axis=1)
+
+    ha["low"] = pd.concat(
+        [df["low"], ha["open"], ha["close"]], axis=1
+    ).min(axis=1)
 
     return ha
 
@@ -120,15 +158,25 @@ def build_heikin_ashi(df):
 # ====================================
 
 def get_data():
+    """ดึงข้อมูลจาก TradingView พร้อม validation"""
 
-    df = tv.get_hist(
-        symbol=SYMBOL,
-        exchange=EXCHANGE,
-        interval=Interval.in_15_minute,
-        n_bars=500
-    )
+    try:
+        df = tv.get_hist(
+            symbol=SYMBOL,
+            exchange=EXCHANGE,
+            interval=Interval.in_15_minute,
+            n_bars=500
+        )
 
-    return df
+        if df is None or df.empty:
+            print(f"[{datetime.now()}] ⚠️ No data returned from TradingView")
+            return None
+
+        return df
+
+    except Exception as e:
+        print(f"[{datetime.now()}] ⚠️ Failed to fetch data: {e}")
+        return None
 
 # ====================================
 # SIGNAL
@@ -142,21 +190,16 @@ def check_signal():
         return
 
     if len(df) < 220:
+        print(f"[{datetime.now()}] ⚠️ Not enough bars: {len(df)} (need 220+)")
         return
 
     ha = build_heikin_ashi(df)
 
-    ha["ema9"] = ha["close"].ewm(
-        span=9,
-        adjust=False
-    ).mean()
+    ha["ema9"] = ha["close"].ewm(span=9, adjust=False).mean()
+    ha["ema200"] = ha["close"].ewm(span=200, adjust=False).mean()
 
-    ha["ema200"] = ha["close"].ewm(
-        span=200,
-        adjust=False
-    ).mean()
-
-    # ใช้แท่งปิดล่าสุดจริง
+    # ใช้ iloc[-2] (แท่งปิดสมบูรณ์ล่าสุด) แทน iloc[-1]
+    # เพราะ iloc[-1] คือแท่งที่ยังไม่ปิด ค่าจะเปลี่ยนตลอดเวลา
     prev = ha.iloc[-3]
     curr = ha.iloc[-2]
 
@@ -175,7 +218,8 @@ def check_signal():
         f"Candle={candle_time} "
         f"Close={curr['close']:.2f} "
         f"EMA9={curr['ema9']:.2f} "
-        f"EMA200={curr['ema200']:.2f}"
+        f"EMA200={curr['ema200']:.2f} "
+        f"Trend={trend}"
     )
 
     # ==========================
@@ -184,14 +228,12 @@ def check_signal():
 
     cross_up_200 = (
         prev["ema9"] <= prev["ema200"]
-        and
-        curr["ema9"] > curr["ema200"]
+        and curr["ema9"] > curr["ema200"]
     )
 
     cross_down_200 = (
         prev["ema9"] >= prev["ema200"]
-        and
-        curr["ema9"] < curr["ema200"]
+        and curr["ema9"] < curr["ema200"]
     )
 
     if cross_up_200:
@@ -226,14 +268,12 @@ def check_signal():
 
     close_above_ema9 = (
         prev["close"] <= prev["ema9"]
-        and
-        curr["close"] > curr["ema9"]
+        and curr["close"] > curr["ema9"]
     )
 
     close_below_ema9 = (
         prev["close"] >= prev["ema9"]
-        and
-        curr["close"] < curr["ema9"]
+        and curr["close"] < curr["ema9"]
     )
 
     if close_above_ema9:
@@ -272,40 +312,43 @@ if __name__ == "__main__":
 
     send_telegram("🚀 XAU Alert Started")
 
-    heartbeat_sent = set()
-
     while True:
 
         try:
 
-            now = datetime.now(
-                ZoneInfo("Asia/Bangkok")
-            )
+            now = datetime.now(ZoneInfo("Asia/Bangkok"))
 
             current_time = now.strftime("%H:%M")
+            current_date = now.strftime("%Y-%m-%d")
 
-            if current_time in [
-                "08:00",
-                "14:00",
-                "19:00"
-            ]:
+            state = load_state()
 
-                if current_time not in heartbeat_sent:
+            # รีเซ็ต heartbeat list ทุกวันเที่ยงคืน
+            last_heartbeat_date = state.get("heartbeat_date", "")
+
+            if current_date != last_heartbeat_date:
+                state["heartbeat_sent"] = []
+                state["heartbeat_date"] = current_date
+                save_state(state)
+
+            # ส่ง heartbeat ตามเวลาที่กำหนด
+            HEARTBEAT_TIMES = ["08:00", "14:00", "19:00"]
+
+            if current_time in HEARTBEAT_TIMES:
+
+                if current_time not in state["heartbeat_sent"]:
 
                     send_telegram(
                         f"💓 XAU Alert Alive\n"
                         f"Time: {current_time}"
                     )
 
-                    heartbeat_sent.add(current_time)
-
-            if current_time == "00:00":
-                heartbeat_sent.clear()
+                    state["heartbeat_sent"].append(current_time)
+                    save_state(state)
 
             check_signal()
 
         except Exception as e:
-
-            print(e)
+            print(f"[{datetime.now()}] ❌ Main loop error: {e}")
 
         time.sleep(60)

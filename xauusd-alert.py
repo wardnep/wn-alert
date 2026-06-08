@@ -280,7 +280,13 @@ def check_m15_ema_signal(state):
 
     prev = ha.iloc[-3]
     curr = ha.iloc[-2]
-    candle_time = str(curr.name)
+
+    if curr.name.tzinfo is None:
+        candle_time_bkk = curr.name.tz_localize("UTC").astimezone(ZoneInfo("Asia/Bangkok"))
+    else:
+        candle_time_bkk = curr.name.astimezone(ZoneInfo("Asia/Bangkok"))
+
+    candle_time = candle_time_bkk.strftime("%Y-%m-%d %H:%M:%S")
 
     trend = "UPTREND" if curr["ema9"] > curr["ema200"] else "DOWNTREND"
 
@@ -346,14 +352,20 @@ def check_h1_price_alert(state):
         print(f"[{datetime.now()}] ⚠️ Not enough bars: {len(df)} (need 10+)")
         return
 
-    prev_candle = df.iloc[-3]
-    curr_candle = df.iloc[-2]
-    candle_time = str(curr_candle.name)
+    prev = df.iloc[-3]
+    curr = df.iloc[-2]
+
+    if curr.name.tzinfo is None:
+        candle_time_bkk = curr.name.tz_localize("UTC").astimezone(ZoneInfo("Asia/Bangkok"))
+    else:
+        candle_time_bkk = curr.name.astimezone(ZoneInfo("Asia/Bangkok"))
+
+    candle_time = candle_time_bkk.strftime("%Y-%m-%d %H:%M:%S")
 
     print(
         f"[{datetime.now()}] "
         f"H1 Candle={candle_time} "
-        f"Close={curr_candle['close']:.2f}"
+        f"Close={curr['close']:.2f}"
     )
 
     # ──────────────────────────────────────
@@ -366,20 +378,20 @@ def check_h1_price_alert(state):
         if state_key not in state:
             state[state_key] = "unknown"
 
-        price_cross_up   = prev_candle["close"] <= price and curr_candle["close"] > price
-        price_cross_down = prev_candle["close"] >= price and curr_candle["close"] < price
+        price_cross_up   = prev["close"] <= price and curr["close"] > price
+        price_cross_down = prev["close"] >= price and curr["close"] < price
 
         if price_cross_up and state[state_key] != "above":
             send_telegram(
                 f"🔔 XAUUSD 1H\n⬆️ CLOSE ABOVE {price}\n"
-                f"💰 Close={curr_candle['close']:.2f}\n⏰ {candle_time}"
+                f"💰 Close={curr['close']:.2f}\n⏰ {candle_time}"
             )
             state[state_key] = "above"
 
         elif price_cross_down and state[state_key] != "below":
             send_telegram(
                 f"🔔 XAUUSD 1H\n⬇️ CLOSE BELOW {price}\n"
-                f"💰 Close={curr_candle['close']:.2f}\n⏰ {candle_time}"
+                f"💰 Close={curr['close']:.2f}\n⏰ {candle_time}"
             )
             state[state_key] = "below"
 

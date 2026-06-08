@@ -16,6 +16,7 @@ import json          # ใช้อ่าน/เขียน state.json
 import os            # ใช้อ่าน environment variable และเช็คไฟล์
 import requests      # ใช้เรียก Telegram API (HTTP POST)
 import pandas as pd  # ใช้จัดการ DataFrame ของข้อมูลราคา
+import sqlite3       # ใช้เชื่อมต่อ SQLite เพื่อโหลด price levels
 
 from datetime import datetime       # ใช้แสดงเวลาใน log และเช็คเวลา heartbeat
 from zoneinfo import ZoneInfo       # ใช้แปลงเวลาเป็น timezone Asia/Bangkok
@@ -36,6 +37,7 @@ TELEGRAM_TOKEN   = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 TV_USERNAME      = os.getenv("TV_USERNAME")
 TV_PASSWORD      = os.getenv("TV_PASSWORD")
+JOURNEY_SQLITE   = os.getenv("JOURNEY_SQLITE")
 
 STATE_FILE = "state.json"
 
@@ -43,7 +45,25 @@ SYMBOL   = "XAUUSD"
 EXCHANGE = "OANDA"
 
 # [แก้ไข #3] ย้าย price_levels ออกมาไว้ใน CONFIG ให้แก้ง่าย
-PRICE_LEVELS = [4300, 4310]
+def load_price_levels():
+    """โหลด price levels ที่ active=1 จาก SQLite"""
+    try:
+        with sqlite3.connect(JOURNEY_SQLITE) as conn:
+            rows = conn.execute(
+                "SELECT price FROM price_levels WHERE active = 1 ORDER BY price"
+            ).fetchall()
+        return [row[0] for row in rows]
+
+    except Exception as e:
+        print(f"[{datetime.now()}] ⚠️ Failed to load price levels: {e}")
+        return []
+
+def remove_price_level(price: float):
+    with sqlite3.connect(JOURNEY_SQLITE) as conn:
+        conn.execute(
+            "UPDATE price_levels SET active = 0 WHERE price = ?", (price,)
+        )
+        conn.commit()
 
 # ====================================
 # TRADINGVIEW CONNECTION
@@ -332,7 +352,7 @@ def check_m15_ema_signal(state):
         state["ema9_position"] = "below"
 
 
-def check_h1_price_alert(state):
+def check_h1_price_alert(state, price_levels):
     """
     ตรวจสอบ candle close ที่ตัดผ่าน price level บน 1H
 
@@ -371,8 +391,7 @@ def check_h1_price_alert(state):
     # ──────────────────────────────────────
     # SIGNAL 3: CANDLE CLOSE CROSS PRICE LEVEL
     # ──────────────────────────────────────
-
-    for price in PRICE_LEVELS:
+    for price in price_levels:
         state_key = f"h1_price_{price}"
 
         if state_key not in state:
@@ -387,6 +406,7 @@ def check_h1_price_alert(state):
                 f"💰 Close={curr['close']:.2f}\n⏰ {candle_time}"
             )
             state[state_key] = "above"
+            remove_price_level(price)
 
         elif price_cross_down and state[state_key] != "below":
             send_telegram(
@@ -394,6 +414,7 @@ def check_h1_price_alert(state):
                 f"💰 Close={curr['close']:.2f}\n⏰ {candle_time}"
             )
             state[state_key] = "below"
+            remove_price_level(price)
 
 
 # ====================================
@@ -436,10 +457,16 @@ if __name__ == "__main__":
             # ────────────────────────────────
             # ตรวจสอบ signal — ใช้ state ตัวเดียวกัน
             # [แก้ไข #1] ทั้งสองฟังก์ชันแก้ไข state in-place
-            #            save ครั้งเดียวหลังจากทั้งคู่เสร็จ
+            # save ครั้งเดียวหลังจากทั้งคู่เสร็จ
             # ────────────────────────────────
             check_m15_ema_signal(state)
-            check_h1_price_alert(state)
+
+            price_levels = load_price_levels()
+
+            if not price_levels:
+                print(f"[{datetime.now()}] ⚠️ No active price levels")
+            else:
+                check_h1_price_alert(state, price_levels)
 
             # save ครั้งเดียวหลังจากทุก signal ถูกตรวจสอบแล้ว
             save_state(state)

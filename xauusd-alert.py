@@ -284,7 +284,7 @@ def build_heikin_ashi(df):
 # DOWNLOAD DATA
 # ====================================
 
-def get_data():
+def get_data_15m():
     """
     ดึงข้อมูลราคา XAUUSD M15 จาก TradingView
 
@@ -301,6 +301,38 @@ def get_data():
             symbol=SYMBOL,
             exchange=EXCHANGE,
             interval=Interval.in_15_minute,  # timeframe M15
+            n_bars=500                        # จำนวนแท่งย้อนหลัง
+        )
+
+        # เช็คว่าได้ข้อมูลจริงๆ ไม่ใช่ None หรือ DataFrame ว่าง
+        if df is None or df.empty:
+            print(f"[{datetime.now()}] ⚠️ No data returned from TradingView")
+            return None
+
+        return df
+
+    except Exception as e:
+        # เช่น network ขาด, TradingView เปลี่ยน API, session หมดอายุ
+        print(f"[{datetime.now()}] ⚠️ Failed to fetch data: {e}")
+        return None
+
+def get_data_1h():
+    """
+    ดึงข้อมูลราคา XAUUSD 1H จาก TradingView
+
+    ดึง 500 แท่งล่าสุด (~5 วันของ 1H)
+    จำนวนนี้เพียงพอสำหรับคำนวณ EMA200 ที่แม่นยำ
+
+    Returns:
+        df (pd.DataFrame): ข้อมูลราคา OHLCV
+        None: ถ้าดึงไม่ได้หรือ data ว่างเปล่า
+    """
+
+    try:
+        df = tv.get_hist(
+            symbol=SYMBOL,
+            exchange=EXCHANGE,
+            interval=Interval.in_1_hour,  # timeframe 1H
             n_bars=500                        # จำนวนแท่งย้อนหลัง
         )
 
@@ -337,7 +369,7 @@ def get_data():
 #    prev[A] <= prev[B]  และ  curr[A] > curr[B]  → A ตัดขึ้น B
 #    prev[A] >= prev[B]  และ  curr[A] < curr[B]  → A ตัดลง B
 
-def check_signal():
+def check_m15_ema_signal():
     """
     ฟังก์ชันหลักที่รันทุก 60 วินาที
 
@@ -350,7 +382,7 @@ def check_signal():
     6. บันทึก state ลงไฟล์
     """
 
-    df = get_data()
+    df = get_data_15m()
 
     # ถ้าดึงข้อมูลไม่ได้ ให้ข้ามรอบนี้ไป จะลองใหม่อีกครั้งใน 60 วินาที
     if df is None:
@@ -508,6 +540,85 @@ def check_signal():
     # บันทึก state ที่อัปเดตแล้วกลับลงไฟล์ทุกรอบ
     save_state(state)
 
+def check_h1_price_alert():
+    # ──────────────────────────────────────
+    # SIGNAL 3: CANDLE CLOSE CROSS PRICE LEVEL
+    # ──────────────────────────────────────
+
+    state = load_state()
+
+    df = get_data_1h()
+    # ถ้าดึงข้อมูลไม่ได้ ให้ข้ามรอบนี้ไป จะลองใหม่อีกครั้งใน 60 วินาที
+    if df is None:
+        return
+
+    # ต้องการอย่างน้อย 10
+    if len(df) < 10:
+        print(f"[{datetime.now()}] ⚠️ Not enough bars: {len(df)} (need 10+)")
+        return
+
+    price_levels = [
+        4000,
+        4100,
+        4200,
+        4300,
+    ]
+
+    prev_candle = df.iloc[-3]
+    curr_candle = df.iloc[-2]
+
+    candle_time = str(curr_candle.name)
+
+    print(
+        f"[{datetime.now()}] "
+        f"H1 Candle={candle_time} "
+        f"Close={curr_candle['close']:.2f}"
+    )
+
+    for price in price_levels:
+
+        state_key = f"h1_price_{price}"
+
+        if state_key not in state:
+            state[state_key] = "unknown"
+
+        price_cross_up = (
+            prev_candle["close"] <= price
+            and curr_candle["close"] > price
+        )
+
+        price_cross_down = (
+            prev_candle["close"] >= price
+            and curr_candle["close"] < price
+        )
+
+        if price_cross_up:
+
+            if state[state_key] != "above":
+
+                send_telegram(
+                    f"🔔 XAUUSD 1H\n"
+                    f"⬆️ CLOSE ABOVE {price}\n"
+                    f"💰 Close={curr_candle['close']:.2f}\n"
+                    f"⏰ {candle_time}"
+                )
+
+                state[state_key] = "above"
+
+        elif price_cross_down:
+
+            if state[state_key] != "below":
+
+                send_telegram(
+                    f"🔔 XAUUSD 1H\n"
+                    f"⬇️ CLOSE BELOW {price}\n"
+                    f"💰 Close={curr_candle['close']:.2f}\n"
+                    f"⏰ {candle_time}"
+                )
+
+                state[state_key] = "below"
+
+        save_state(state)
 
 # ====================================
 # MAIN LOOP
@@ -571,7 +682,8 @@ if __name__ == "__main__":
             # ────────────────────────────────
             # ตรวจสอบ signal หลัก
             # ────────────────────────────────
-            check_signal()
+            check_m15_ema_signal()
+            check_h1_price_alert()
 
         except Exception as e:
             # ดักทุก error ที่อาจเกิดใน loop นี้

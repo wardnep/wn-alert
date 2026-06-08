@@ -43,7 +43,7 @@ SYMBOL   = "XAUUSD"
 EXCHANGE = "OANDA"
 
 # [แก้ไข #3] ย้าย price_levels ออกมาไว้ใน CONFIG ให้แก้ง่าย
-PRICE_LEVELS = [3200, 3300, 3400, 3500, 3600]
+PRICE_LEVELS = [4300, 4360]
 
 # ====================================
 # TRADINGVIEW CONNECTION

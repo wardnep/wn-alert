@@ -50,7 +50,7 @@ def load_price_levels():
     try:
         with sqlite3.connect(JOURNEY_SQLITE) as conn:
             rows = conn.execute(
-                "SELECT price FROM price_levels WHERE active = 1 ORDER BY price"
+                "SELECT price, message FROM price_levels WHERE active = 1 ORDER BY price"
             ).fetchall()
         return [row[0] for row in rows]
 
@@ -391,7 +391,9 @@ def check_h1_price_alert(state, price_levels):
     # ──────────────────────────────────────
     # SIGNAL 3: CANDLE CLOSE CROSS PRICE LEVEL
     # ──────────────────────────────────────
-    for price in price_levels:
+    for price_level in price_levels:
+        price = price_level["price"]  # สมมติว่า price_levels เป็น list ของ float
+        message = price_level["message"]  # สมมติว่า price_levels มี message ด้วย
         state_key = f"h1_price_{price}"
 
         if state_key not in state:
@@ -404,6 +406,7 @@ def check_h1_price_alert(state, price_levels):
             send_telegram(
                 f"🔔 XAUUSD 1H\n⬆️ CLOSE ABOVE {price}\n"
                 f"💰 Close={curr['close']:.2f}\n⏰ {candle_time}"
+                f"\n📢 {message}"  # เพิ่มข้อความจาก price level
             )
             state[state_key] = "above"
             remove_price_level(price)
@@ -412,6 +415,7 @@ def check_h1_price_alert(state, price_levels):
             send_telegram(
                 f"🔔 XAUUSD 1H\n⬇️ CLOSE BELOW {price}\n"
                 f"💰 Close={curr['close']:.2f}\n⏰ {candle_time}"
+                f"\n📢 {message}"  # เพิ่มข้อความจาก price level
             )
             state[state_key] = "below"
             remove_price_level(price)

@@ -125,6 +125,7 @@ def load_state():
         "ema200_signal":    None,
         "ema9_position":    None,
         "last_alert_candle": None,
+        "last_ema9_alert_candle": None,
         "heartbeat_sent":   [],
         "heartbeat_date":   ""
     }
@@ -343,13 +344,17 @@ def check_m15_ema_signal(state):
     close_above_ema9 = prev["close"] <= prev["ema9"] and curr["close"] > curr["ema9"]
     close_below_ema9 = prev["close"] >= prev["ema9"] and curr["close"] < curr["ema9"]
 
-    if close_above_ema9 and state["ema9_position"] != "above":
+    if close_above_ema9 and state["ema9_position"] != "above" \
+        and state["last_ema9_alert_candle"] != candle_time:   # ← เพิ่มเงื่อนไขนี้
         send_telegram(f"⬆️ XAUUSD M15\nHA Close ABOVE EMA9\n📈 {trend}\n⏰ {candle_time}")
         state["ema9_position"] = "above"
+        state["last_ema9_alert_candle"] = candle_time             # ← บันทึก candle
 
-    elif close_below_ema9 and state["ema9_position"] != "below":
+    elif close_below_ema9 and state["ema9_position"] != "below" \
+            and state["last_ema9_alert_candle"] != candle_time:   # ← เพิ่มเงื่อนไขนี้
         send_telegram(f"⬇️ XAUUSD M15\nHA Close BELOW EMA9\n📉 {trend}\n⏰ {candle_time}")
         state["ema9_position"] = "below"
+        state["last_ema9_alert_candle"] = candle_time
 
 
 def check_h1_price_alert(state, price_levels):

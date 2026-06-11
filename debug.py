@@ -2,10 +2,12 @@ import os
 import sqlite3
 from datetime import datetime
 
+TV_USERNAME      = os.getenv("TV_USERNAME")
 JOURNEY_SQLITE   = os.getenv("JOURNEY_SQLITE", "")
 
 def load_price_levels():
 
+    print(f"TV_USERNAME {TV_USERNAME}")
     print(f"JOURNEY_SQLITE {JOURNEY_SQLITE}")
 
     """โหลด price levels ที่ active=1 จาก SQLite"""

@@ -2,11 +2,13 @@ import os
 import sqlite3
 from datetime import datetime
 
+TELEGRAM_TOKEN   = os.getenv("TELEGRAM_TOKEN")
 TV_USERNAME      = os.getenv("TV_USERNAME")
 JOURNEY_SQLITE   = os.getenv("JOURNEY_SQLITE", "")
 
 def load_price_levels():
 
+    print(f"TELEGRAM_TOKEN {TELEGRAM_TOKEN}")
     print(f"TV_USERNAME {TV_USERNAME}")
     print(f"JOURNEY_SQLITE {JOURNEY_SQLITE}")
 

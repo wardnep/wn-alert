@@ -36,7 +36,7 @@ TELEGRAM_TOKEN   = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 TV_USERNAME      = os.getenv("TV_USERNAME")
 TV_PASSWORD      = os.getenv("TV_PASSWORD")
-JOURNEY_SQLITE   = os.getenv("JOURNEY_SQLITE")
+JOURNEY_SQLITE   = os.getenv("JOURNEY_SQLITE", "")
 
 STATE_FILE = "state.json"
 
@@ -450,12 +450,12 @@ if __name__ == "__main__":
             # ────────────────────────────────
             check_m15_ema_signal(state)
 
-            price_levels = load_price_levels()
+            # price_levels = load_price_levels()
 
-            if not price_levels:
-                print(f"[{datetime.now()}] ⚠️ No active price levels")
-            else:
-                check_h1_price_alert(state, price_levels)
+            # if not price_levels:
+            #     print(f"[{datetime.now()}] ⚠️ No active price levels")
+            # else:
+            #     check_h1_price_alert(state, price_levels)
 
             # save ครั้งเดียวหลังจากทุก signal ถูกตรวจสอบแล้ว
             save_state(state)

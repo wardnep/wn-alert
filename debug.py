@@ -34,5 +34,5 @@ for level in price_levels:
     price = level["price"]
     message = level["message"]
 
-    print(f"{price} {message}")
+    print(f"{price} : {message}")
 

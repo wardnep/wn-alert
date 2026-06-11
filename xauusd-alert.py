@@ -382,7 +382,7 @@ def check_h1_price_alert(state, price_levels):
     # SIGNAL 3: CANDLE CLOSE CROSS PRICE LEVEL
     # ──────────────────────────────────────
     for price_level in price_levels:
-        price = price_level["price"]
+        price = float(price_level["price"])
         message = price_level["message"]
 
         state_key = f"h1_price_{price}"

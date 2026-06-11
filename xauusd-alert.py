@@ -50,9 +50,9 @@ def load_price_levels():
     try:
         with sqlite3.connect(JOURNEY_SQLITE) as conn:
             rows = conn.execute(
-                "SELECT price, message FROM price_levels WHERE active = 1 ORDER BY price"
+                "SELECT price FROM price_levels WHERE active = 1 ORDER BY price"
             ).fetchall()
-        return [{"price": row[0], "message": row[1]} for row in rows]
+        return [row[0] for row in rows]
 
     except Exception as e:
         print(f"[{datetime.now()}] ⚠️ Failed to load price levels: {e}")
@@ -125,7 +125,6 @@ def load_state():
         "ema200_signal":    None,
         "ema9_position":    None,
         "last_alert_candle": None,
-        "last_ema9_alert_candle": None,
         "heartbeat_sent":   [],
         "heartbeat_date":   ""
     }
@@ -344,17 +343,13 @@ def check_m15_ema_signal(state):
     close_above_ema9 = prev["close"] <= prev["ema9"] and curr["close"] > curr["ema9"]
     close_below_ema9 = prev["close"] >= prev["ema9"] and curr["close"] < curr["ema9"]
 
-    if close_above_ema9 and state["ema9_position"] != "above" \
-        and state["last_ema9_alert_candle"] != candle_time:   # ← เพิ่มเงื่อนไขนี้
+    if close_above_ema9 and state["ema9_position"] != "above":
         send_telegram(f"⬆️ XAUUSD M15\nHA Close ABOVE EMA9\n📈 {trend}\n⏰ {candle_time}")
         state["ema9_position"] = "above"
-        state["last_ema9_alert_candle"] = candle_time             # ← บันทึก candle
 
-    elif close_below_ema9 and state["ema9_position"] != "below" \
-            and state["last_ema9_alert_candle"] != candle_time:   # ← เพิ่มเงื่อนไขนี้
+    elif close_below_ema9 and state["ema9_position"] != "below":
         send_telegram(f"⬇️ XAUUSD M15\nHA Close BELOW EMA9\n📉 {trend}\n⏰ {candle_time}")
         state["ema9_position"] = "below"
-        state["last_ema9_alert_candle"] = candle_time
 
 
 def check_h1_price_alert(state, price_levels):
@@ -396,9 +391,7 @@ def check_h1_price_alert(state, price_levels):
     # ──────────────────────────────────────
     # SIGNAL 3: CANDLE CLOSE CROSS PRICE LEVEL
     # ──────────────────────────────────────
-    for price_level in price_levels:
-        price = price_level["price"]  # สมมติว่า price_levels เป็น list ของ float
-        message = price_level["message"]  # สมมติว่า price_levels มี message ด้วย
+    for price in price_levels:
         state_key = f"h1_price_{price}"
 
         if state_key not in state:
@@ -411,7 +404,6 @@ def check_h1_price_alert(state, price_levels):
             send_telegram(
                 f"🔔 XAUUSD 1H\n⬆️ CLOSE ABOVE {price}\n"
                 f"💰 Close={curr['close']:.2f}\n⏰ {candle_time}"
-                f"\n📢 {message}"  # เพิ่มข้อความจาก price level
             )
             state[state_key] = "above"
             remove_price_level(price)
@@ -420,7 +412,6 @@ def check_h1_price_alert(state, price_levels):
             send_telegram(
                 f"🔔 XAUUSD 1H\n⬇️ CLOSE BELOW {price}\n"
                 f"💰 Close={curr['close']:.2f}\n⏰ {candle_time}"
-                f"\n📢 {message}"  # เพิ่มข้อความจาก price level
             )
             state[state_key] = "below"
             remove_price_level(price)

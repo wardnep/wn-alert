@@ -51,7 +51,7 @@ def load_price_levels():
             rows = conn.execute(
                 "SELECT price, message FROM price_levels WHERE active = 1 ORDER BY price"
             ).fetchall()
-        return [row[0] for row in rows]
+        return [{"price": row[0], "message": row[1]} for row in rows]
 
     except Exception as e:
         print(f"[{datetime.now()}] ⚠️ Failed to load price levels: {e}")
@@ -381,7 +381,10 @@ def check_h1_price_alert(state, price_levels):
     # ──────────────────────────────────────
     # SIGNAL 3: CANDLE CLOSE CROSS PRICE LEVEL
     # ──────────────────────────────────────
-    for price in price_levels:
+    for price_level in price_levels:
+        price = price_level["price"]
+        message = price_level["message"]
+
         state_key = f"h1_price_{price}"
 
         if state_key not in state:
@@ -394,6 +397,7 @@ def check_h1_price_alert(state, price_levels):
             send_telegram(
                 f"🔔 XAUUSD 1H\n⬆️ CLOSE ABOVE {price}\n"
                 f"💰 Close={curr['close']:.2f}\n⏰ {candle_time}"
+                f"\n📋 {message}"
             )
             state[state_key] = "above"
             remove_price_level(price)
@@ -402,6 +406,7 @@ def check_h1_price_alert(state, price_levels):
             send_telegram(
                 f"🔔 XAUUSD 1H\n⬇️ CLOSE BELOW {price}\n"
                 f"💰 Close={curr['close']:.2f}\n⏰ {candle_time}"
+                f"\n📋 {message}"
             )
             state[state_key] = "below"
             remove_price_level(price)
@@ -450,12 +455,12 @@ if __name__ == "__main__":
             # ────────────────────────────────
             check_m15_ema_signal(state)
 
-            # price_levels = load_price_levels()
+            price_levels = load_price_levels()
 
-            # if not price_levels:
-            #     print(f"[{datetime.now()}] ⚠️ No active price levels")
-            # else:
-            #     check_h1_price_alert(state, price_levels)
+            if not price_levels:
+                print(f"[{datetime.now()}] ⚠️ No active price levels")
+            else:
+                check_h1_price_alert(state, price_levels)
 
             # save ครั้งเดียวหลังจากทุก signal ถูกตรวจสอบแล้ว
             save_state(state)

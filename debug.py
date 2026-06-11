@@ -22,12 +22,15 @@ def load_price_levels():
                 "SELECT price FROM price_levels WHERE active = 1 ORDER BY price"
             ).fetchall()
 
-        print(rows)
-
         return [row[0] for row in rows]
 
     except Exception as e:
         print(f"[{datetime.now()}] ⚠️ Failed to load price levels: {e}")
         return []
 
-load_price_levels()
+    price_levels = load_price_levels()
+    for price in price_levels:
+        state_key = f"h1_price_{price}"
+
+        print(state_key);
+

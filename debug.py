@@ -2,6 +2,8 @@ import os
 import sqlite3
 from datetime import datetime
 
+load_dotenv()
+
 TELEGRAM_TOKEN   = os.getenv("TELEGRAM_TOKEN")
 TV_USERNAME      = os.getenv("TV_USERNAME")
 JOURNEY_SQLITE   = os.getenv("JOURNEY_SQLITE", "")

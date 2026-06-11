@@ -11,6 +11,9 @@ def load_price_levels():
             rows = conn.execute(
                 "SELECT price FROM price_levels WHERE active = 1 ORDER BY price"
             ).fetchall()
+
+        print(rows)
+
         return [row[0] for row in rows]
 
     except Exception as e:

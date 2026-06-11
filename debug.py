@@ -19,3 +19,5 @@ def load_price_levels():
     except Exception as e:
         print(f"[{datetime.now()}] ⚠️ Failed to load price levels: {e}")
         return []
+
+load_price_levels()

@@ -5,6 +5,9 @@ from datetime import datetime
 JOURNEY_SQLITE   = os.getenv("JOURNEY_SQLITE", "")
 
 def load_price_levels():
+
+    print(f"JOURNEY_SQLITE {JOURNEY_SQLITE}")
+
     """โหลด price levels ที่ active=1 จาก SQLite"""
     try:
         with sqlite3.connect(JOURNEY_SQLITE) as conn:

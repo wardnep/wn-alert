@@ -29,6 +29,7 @@ def load_price_levels():
         return []
 
 price_levels = load_price_levels()
-for price, message in price_levels:
-    print(f"{price} {message}");
+for level in price_levels:
+    price = level["price"]
+    message = level["message"]
 

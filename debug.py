@@ -411,9 +411,35 @@ def check_h1_price_alert(state, price_levels):
             state[state_key] = "below"
             remove_price_level(price)
 
-# ====================================
-# MAIN LOOP
-# ====================================
+def save_state(state):
+    """
+    บันทึก state ลงไฟล์ JSON แบบ atomic write
+    เขียนไฟล์ temp ก่อน แล้วค่อย rename เพื่อป้องกันไฟล์เสียหาย
+    ถ้า process ถูก kill กลางคัน ไฟล์เดิมจะยังอยู่ครบถ้วน
+
+    [แก้ไข #5] ใช้ atomic write แทนการเขียนตรง
+    """
+
+    tmp_file = STATE_FILE + ".tmp"
+
+    try:
+        with open(tmp_file, "w") as f:
+            json.dump(state, f, indent=2)
+
+        # os.replace() เป็น atomic operation บน POSIX (Linux/macOS)
+        # ถ้าเขียน .tmp สำเร็จแล้ว rename จะ guaranteed ว่า state.json ไม่เสียหาย
+        os.replace(tmp_file, STATE_FILE)
+
+    except IOError as e:
+        print(f"[{datetime.now()}] ⚠️ Failed to save state: {e}")
+
+        # ลบ .tmp ที่อาจค้างไว้
+        if os.path.exists(tmp_file):
+            try:
+                os.remove(tmp_file)
+            except OSError:
+                pass
+
 state = load_state()
 
 check_m15_ema_signal(state)
@@ -424,3 +450,5 @@ if not price_levels:
     print(f"[{datetime.now()}] ⚠️ No active price levels")
 else:
     check_h1_price_alert(state, price_levels)
+
+save_state(state)

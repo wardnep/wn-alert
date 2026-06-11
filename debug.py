@@ -19,7 +19,7 @@ def load_price_levels():
     try:
         with sqlite3.connect(JOURNEY_SQLITE) as conn:
             rows = conn.execute(
-                "SELECT price FROM price_levels WHERE active = 1 ORDER BY price"
+                "SELECT price, message FROM price_levels WHERE active = 1 ORDER BY price"
             ).fetchall()
 
         return [row[0] for row in rows]
@@ -29,8 +29,6 @@ def load_price_levels():
         return []
 
 price_levels = load_price_levels()
-for price in price_levels:
-    state_key = f"h1_price_{price}"
-
-    print(state_key);
+for price, message in price_levels:
+    print(f"{price} {message}");
 

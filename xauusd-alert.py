@@ -51,7 +51,7 @@ def load_price_levels():
             rows = conn.execute(
                 "SELECT price, message FROM price_levels WHERE active = 1 ORDER BY price"
             ).fetchall()
-        return [row[0] for row in rows]
+        return [{"price": row[0], "message": row[1]} for row in rows]
 
     except Exception as e:
         print(f"[{datetime.now()}] ⚠️ Failed to load price levels: {e}")

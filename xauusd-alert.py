@@ -44,12 +44,12 @@ SYMBOL   = "XAUUSD"
 EXCHANGE = "OANDA"
 
 # [แก้ไข #3] ย้าย price_levels ออกมาไว้ใน CONFIG ให้แก้ง่าย
-def load_price_levels():
+def load_price_levels(timeframe: str):
     """โหลด price levels ที่ active=1 จาก SQLite"""
     try:
         with sqlite3.connect(JOURNEY_SQLITE) as conn:
             rows = conn.execute(
-                "SELECT price, message FROM price_levels WHERE active = 1 ORDER BY price"
+                "SELECT price, message FROM price_levels WHERE active = 1 AND timeframe = ? ORDER BY price", (timeframe,)
             ).fetchall()
         return [{"price": row[0], "message": row[1]} for row in rows]
 
@@ -266,18 +266,17 @@ def get_data_1h():
 # SIGNAL DETECTION
 # ====================================
 
-def check_m15_ema_signal(state):
+def check_m15_ema_signal(state, df):
     """
     ตรวจสอบ EMA cross signal บน M15
 
     [แก้ไข #1] รับ state จากภายนอก ไม่โหลด/save เอง
-               เพื่อให้ state ไม่ทับกับ check_h1_price_alert()
+               เพื่อให้ state ไม่ทับกับ check_price_alert()
 
     Args:
         state (dict): state ที่โหลดมาจาก main loop (แก้ไข in-place)
     """
 
-    df = get_data_15m()
     if df is None:
         return
 
@@ -342,7 +341,7 @@ def check_m15_ema_signal(state):
         send_telegram(f"⬇️ XAUUSD M15\nHA Close BELOW EMA9\n📉 {trend}\n⏰ {candle_time}")
         state["ema9_position"] = "below"
 
-def check_h1_price_alert(state, price_levels):
+def check_price_alert(state, price_levels, df, time_frame):
     """
     ตรวจสอบ candle close ที่ตัดผ่าน price level บน 1H
 
@@ -354,7 +353,6 @@ def check_h1_price_alert(state, price_levels):
         state (dict): state ที่โหลดมาจาก main loop (แก้ไข in-place)
     """
 
-    df = get_data_1h()
     if df is None:
         return
 
@@ -374,7 +372,7 @@ def check_h1_price_alert(state, price_levels):
 
     print(
         f"[{datetime.now()}] "
-        f"H1 Candle={candle_time} "
+        f"{time_frame.upper()} Candle={candle_time} "
         f"Close={curr['close']:.2f}"
     )
 
@@ -385,7 +383,7 @@ def check_h1_price_alert(state, price_levels):
         price = float(price_level["price"])
         message = price_level["message"]
 
-        state_key = f"h1_price_{price}"
+        state_key = f"{time_frame}_price_{price}"
 
         if state_key not in state:
             state[state_key] = "unknown"
@@ -395,7 +393,7 @@ def check_h1_price_alert(state, price_levels):
 
         if price_cross_up and state[state_key] != "above":
             send_telegram(
-                f"🔔 XAUUSD 1H\n⬆️ CLOSE ABOVE {price}\n"
+                f"🔔 XAUUSD {time_frame.upper()}\n⬆️ CLOSE ABOVE {price}\n"
                 f"💰 Close={curr['close']:.2f}\n⏰ {candle_time}"
                 f"\n📋 {message}"
             )
@@ -404,7 +402,7 @@ def check_h1_price_alert(state, price_levels):
 
         elif price_cross_down and state[state_key] != "below":
             send_telegram(
-                f"🔔 XAUUSD 1H\n⬇️ CLOSE BELOW {price}\n"
+                f"🔔 XAUUSD {time_frame.upper()}\n⬇️ CLOSE BELOW {price}\n"
                 f"💰 Close={curr['close']:.2f}\n⏰ {candle_time}"
                 f"\n📋 {message}"
             )
@@ -448,19 +446,22 @@ if __name__ == "__main__":
                 send_telegram(f"💓 XAU Alert Alive\nTime: {current_time}")
                 state["heartbeat_sent"].append(current_time)
 
-            # ────────────────────────────────
-            # ตรวจสอบ signal — ใช้ state ตัวเดียวกัน
-            # [แก้ไข #1] ทั้งสองฟังก์ชันแก้ไข state in-place
-            # save ครั้งเดียวหลังจากทั้งคู่เสร็จ
-            # ────────────────────────────────
-            check_m15_ema_signal(state)
+            df_15m = get_data_15m()
+            df_1h = get_data_1h()
 
-            price_levels = load_price_levels()
+            check_m15_ema_signal(state, df_15m)
 
-            if not price_levels:
+            price_levels_15m = load_price_levels('15m')
+            if not price_levels_15m:
                 print(f"[{datetime.now()}] ⚠️ No active price levels")
             else:
-                check_h1_price_alert(state, price_levels)
+                check_price_alert(state, price_levels_15m, df_15m, '15m')
+
+            price_levels_1h = load_price_levels('1h')
+            if not price_levels_1h:
+                print(f"[{datetime.now()}] ⚠️ No active price levels")
+            else:
+                check_price_alert(state, price_levels_1h, df_1h, '1h')
 
             # save ครั้งเดียวหลังจากทุก signal ถูกตรวจสอบแล้ว
             save_state(state)

@@ -44,12 +44,12 @@ SYMBOL   = "XAUUSD"
 EXCHANGE = "OANDA"
 
 # [แก้ไข #3] ย้าย price_levels ออกมาไว้ใน CONFIG ให้แก้ง่าย
-def load_price_levels():
+def load_price_levels(timeframe: str):
     """โหลด price levels ที่ active=1 จาก SQLite"""
     try:
         with sqlite3.connect(JOURNEY_SQLITE) as conn:
             rows = conn.execute(
-                "SELECT price, message FROM price_levels WHERE active = 1 ORDER BY price"
+                "SELECT price, message FROM price_levels WHERE active = 1 AND timeframe = ? ORDER BY price", (timeframe,)
             ).fetchall()
         return [{"price": row[0], "message": row[1]} for row in rows]
 
@@ -455,7 +455,7 @@ if __name__ == "__main__":
             # ────────────────────────────────
             check_m15_ema_signal(state)
 
-            price_levels = load_price_levels()
+            price_levels = load_price_levels('1h')
 
             if not price_levels:
                 print(f"[{datetime.now()}] ⚠️ No active price levels")

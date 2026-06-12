@@ -49,7 +49,7 @@ def load_price_levels(timeframe: str):
     try:
         with sqlite3.connect(JOURNEY_SQLITE) as conn:
             rows = conn.execute(
-                "SELECT price, message FROM price_levels WHERE active = 1 AND timeframe = ? ORDER BY price", (timeframe,)
+                "SELECT price, message FROM price_levels WHERE active = 1 AND time_frame = ? ORDER BY price", (timeframe,)
             ).fetchall()
         return [{"price": row[0], "message": row[1]} for row in rows]
 

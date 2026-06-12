@@ -60,7 +60,7 @@ def load_price_levels(timeframe: str):
 def remove_price_level(price: float):
     with sqlite3.connect(JOURNEY_SQLITE) as conn:
         conn.execute(
-            "UPDATE price_levels SET active = 0 WHERE price = ?", (price,)
+            "UPDATE price_levels SET active = 0 WHERE price = ?", (f"{price:g}"),
         )
         conn.commit()
 

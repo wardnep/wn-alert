@@ -444,7 +444,7 @@ if __name__ == "__main__":
             HEARTBEAT_TIMES = ["08:00", "14:00", "19:00"]
 
             if current_time in HEARTBEAT_TIMES and current_time not in state["heartbeat_sent"]:
-                send_telegram(f"💓 XAU Alert Alive\nTime: {current_time}")
+                send_telegram(f"💓 XAU Alert Alive\n")
                 state["heartbeat_sent"].append(current_time)
 
             df_15m = get_data_15m()

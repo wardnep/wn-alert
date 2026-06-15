@@ -470,4 +470,4 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"[{datetime.now()}] ❌ Main loop error: {e}")
 
-        time.sleep(60)
+        time.sleep(900)

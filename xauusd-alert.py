@@ -318,12 +318,12 @@ def check_m15_ema_signal(state, df):
     cross_down_200 = prev["ema9"] >= prev["ema200"] and curr["ema9"] <  curr["ema200"]
 
     if cross_up_200 and state["last_alert_candle"] != candle_time:
-        send_telegram(f"📈 XAUUSD M15\n🟢 EMA9 ABOVE EMA200)
+        send_telegram(f"📈 XAUUSD M15\n🟢 EMA9 ABOVE EMA200")
         state["ema200_signal"]     = "bullish"
         state["last_alert_candle"] = candle_time
 
     elif cross_down_200 and state["last_alert_candle"] != candle_time:
-        send_telegram(f"📉 XAUUSD M15\n🔴 EMA9 BELOW EMA200)
+        send_telegram(f"📉 XAUUSD M15\n🔴 EMA9 BELOW EMA200")
         state["ema200_signal"]     = "bearish"
         state["last_alert_candle"] = candle_time
 

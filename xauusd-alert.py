@@ -318,12 +318,12 @@ def check_m15_ema_signal(state, df):
     cross_down_200 = prev["ema9"] >= prev["ema200"] and curr["ema9"] <  curr["ema200"]
 
     if cross_up_200 and state["last_alert_candle"] != candle_time:
-        send_telegram(f"📈 XAUUSD M15\n🟢 EMA9 ABOVE EMA200\n⏰ {candle_time}")
+        send_telegram(f"📈 XAUUSD M15\n🟢 EMA9 ABOVE EMA200)
         state["ema200_signal"]     = "bullish"
         state["last_alert_candle"] = candle_time
 
     elif cross_down_200 and state["last_alert_candle"] != candle_time:
-        send_telegram(f"📉 XAUUSD M15\n🔴 EMA9 BELOW EMA200\n⏰ {candle_time}")
+        send_telegram(f"📉 XAUUSD M15\n🔴 EMA9 BELOW EMA200)
         state["ema200_signal"]     = "bearish"
         state["last_alert_candle"] = candle_time
 
@@ -335,11 +335,11 @@ def check_m15_ema_signal(state, df):
     close_below_ema9 = prev["close"] >= prev["ema9"] and curr["close"] < curr["ema9"]
 
     if close_above_ema9 and state["ema9_position"] != "above":
-        send_telegram(f"⬆️ XAUUSD M15\nHA Close ABOVE EMA9\n📈 {trend}\n⏰ {candle_time}")
+        send_telegram(f"⬆️ XAUUSD M15\nHA Close ABOVE EMA9\n📈 {trend})
         state["ema9_position"] = "above"
 
     elif close_below_ema9 and state["ema9_position"] != "below":
-        send_telegram(f"⬇️ XAUUSD M15\nHA Close BELOW EMA9\n📉 {trend}\n⏰ {candle_time}")
+        send_telegram(f"⬇️ XAUUSD M15\nHA Close BELOW EMA9\n📉 {trend})
         state["ema9_position"] = "below"
 
 def check_price_alert(state, price_levels, df, time_frame):
@@ -395,8 +395,8 @@ def check_price_alert(state, price_levels, df, time_frame):
         if price_cross_up and state[state_key] != "above":
             send_telegram(
                 f"🔔 XAUUSD {time_frame.upper()}\n⬆️ CLOSE ABOVE {price}\n"
-                f"💰 Close={curr['close']:.2f}\n⏰ {candle_time}"
-                f"\n📋 {message}"
+                f"💰 Close={curr['close']:.2f}\n"
+                f"📋 {message}"
             )
             state[state_key] = "above"
             remove_price_level(price)
@@ -404,8 +404,8 @@ def check_price_alert(state, price_levels, df, time_frame):
         elif price_cross_down and state[state_key] != "below":
             send_telegram(
                 f"🔔 XAUUSD {time_frame.upper()}\n⬇️ CLOSE BELOW {price}\n"
-                f"💰 Close={curr['close']:.2f}\n⏰ {candle_time}"
-                f"\n📋 {message}"
+                f"💰 Close={curr['close']:.2f}\n"
+                f"📋 {message}"
             )
             state[state_key] = "below"
             remove_price_level(price)

@@ -335,11 +335,11 @@ def check_m15_ema_signal(state, df):
     close_below_ema9 = prev["close"] >= prev["ema9"] and curr["close"] < curr["ema9"]
 
     if close_above_ema9 and state["ema9_position"] != "above":
-        send_telegram(f"⬆️ XAUUSD M15\nHA Close ABOVE EMA9\n📈 {trend})
+        send_telegram(f"⬆️ XAUUSD M15\nHA Close ABOVE EMA9\n📈 {trend}")
         state["ema9_position"] = "above"
 
     elif close_below_ema9 and state["ema9_position"] != "below":
-        send_telegram(f"⬇️ XAUUSD M15\nHA Close BELOW EMA9\n📉 {trend})
+        send_telegram(f"⬇️ XAUUSD M15\nHA Close BELOW EMA9\n📉 {trend}")
         state["ema9_position"] = "below"
 
 def check_price_alert(state, price_levels, df, time_frame):

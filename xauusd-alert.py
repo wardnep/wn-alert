@@ -18,7 +18,7 @@ import requests      # ใช้เรียก Telegram API (HTTP POST)
 import pandas as pd  # ใช้จัดการ DataFrame ของข้อมูลราคา
 import sqlite3       # ใช้เชื่อมต่อ SQLite เพื่อโหลด price levels
 
-from datetime import datetime       # ใช้แสดงเวลาใน log และเช็คเวลา heartbeat
+from datetime import datetime, timedelta       # ใช้แสดงเวลาใน log และเช็คเวลา heartbeat
 from zoneinfo import ZoneInfo       # ใช้แปลงเวลาเป็น timezone Asia/Bangkok
 
 from dotenv import load_dotenv      # ใช้โหลด .env file เข้า environment

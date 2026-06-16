@@ -410,9 +410,21 @@ def check_price_alert(state, price_levels, df, time_frame):
             state[state_key] = "below"
             remove_price_level(price)
 
-# ====================================
-# MAIN LOOP
-# ====================================
+def sleep_until_next_quarter():
+    """หน่วงเวลาจนถึง :00, :15, :30, หรือ :45 ถัดไปพอดี"""
+    now = datetime.now(ZoneInfo("Asia/Bangkok"))
+    # หา quarter ถัดไป (ceil ไปหา 15 นาทีข้างหน้า)
+    minutes = now.minute
+    next_quarter_minute = (minutes // 15 + 1) * 15
+
+    if next_quarter_minute == 60:
+        next_run = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+    else:
+        next_run = now.replace(minute=next_quarter_minute, second=0, microsecond=0)
+
+    wait_seconds = (next_run - now).total_seconds()
+    print(f"[{now.strftime('%H:%M:%S')}] ⏳ Next run at {next_run.strftime('%H:%M:%S')} (wait {wait_seconds:.1f}s)")
+    time.sleep(wait_seconds)
 
 if __name__ == "__main__":
 
@@ -470,4 +482,4 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"[{datetime.now()}] ❌ Main loop error: {e}")
 
-        time.sleep(900)
+        sleep_until_next_quarter()

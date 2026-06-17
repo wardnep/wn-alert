@@ -422,6 +422,8 @@ def sleep_until_next_quarter():
     else:
         next_run = now.replace(minute=next_quarter_minute, second=0, microsecond=0)
 
+    next_run = next_run + timedelta(seconds=10)
+
     wait_seconds = (next_run - now).total_seconds()
     print(f"[{now.strftime('%H:%M:%S')}] ⏳ Next run at {next_run.strftime('%H:%M:%S')} (wait {wait_seconds:.1f}s)")
     time.sleep(wait_seconds)

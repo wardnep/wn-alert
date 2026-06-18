@@ -484,4 +484,5 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"[{datetime.now()}] ❌ Main loop error: {e}")
 
-        sleep_until_next_quarter()
+        # sleep_until_next_quarter()
+        time.sleep(60)

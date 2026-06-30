@@ -16,6 +16,7 @@ import json          # ใช้อ่าน/เขียน state.json
 import os            # ใช้อ่าน environment variable และเช็คไฟล์
 import requests      # ใช้เรียก Telegram API (HTTP POST)
 import pandas as pd  # ใช้จัดการ DataFrame ของข้อมูลราคา
+import math
 
 from datetime import datetime       # ใช้แสดงเวลาใน log และเช็คเวลา heartbeat
 from zoneinfo import ZoneInfo       # ใช้แปลงเวลาเป็น timezone Asia/Bangkok
@@ -152,7 +153,9 @@ def load_state():
         "ema200_signal": None,       # ยังไม่รู้ trend
         "ema9_position": None,       # ยังไม่รู้ตำแหน่ง
         "last_alert_candle": None,   # ยังไม่เคยส่ง EMA200 alert
-        "heartbeat_sent": []         # ยังไม่ได้ส่ง heartbeat วันนี้
+        "heartbeat_sent": [],         # ยังไม่ได้ส่ง heartbeat วันนี้
+        "ema200_slope_direction": None,   # "up" / "down" / "flat" — ทิศของ EMA200 ล่าสุด
+        "ema200_slope_alert_candle": None # candle ที่ส่ง slope alert ไปแล้ว กันส่งซ้ำ
     }
 
     # ถ้าไฟล์ยังไม่มี (รันครั้งแรก) ให้ใช้ค่า default
@@ -316,6 +319,42 @@ def get_data():
         print(f"[{datetime.now()}] ⚠️ Failed to fetch data: {e}")
         return None
 
+def calc_ema200_slope(ha, lookback=3):
+    """
+    คำนวณทิศทางและมุมเอียงของ EMA200 จาก HA close
+
+    เทียบ ema200 ปัจจุบัน (แท่งปิดล่าสุด) กับ ema200 ก่อนหน้า lookback แท่ง
+    แปลงเป็นมุม (degree) โดย normalize ด้วยราคาเฉลี่ย เพื่อให้ threshold
+    ใช้ได้ stable ไม่ว่าทองจะอยู่โซนราคาไหน
+
+    Args:
+        ha (pd.DataFrame): ต้องมี column "ema200" และ "close" คำนวณแล้ว
+        lookback (int): จำนวนแท่งย้อนหลังที่ใช้เทียบ
+
+    Returns:
+        direction (str): "up" / "down" / "flat"
+        angle (float): มุมเอียงเป็น degree (ติดลบ = เอียงลง)
+    """
+    # ใช้ index -2 เป็น "ปัจจุบัน" เพราะแท่งปิดล่าสุดที่สมบูรณ์คือ iloc[-2]
+    # (เหมือน logic ใน check_signal ที่ใช้ curr = ha.iloc[-2])
+    if len(ha) < lookback + 2:
+        return None, None
+
+    ema_now = ha["ema200"].iloc[-2]
+    ema_prev = ha["ema200"].iloc[-2 - lookback]
+    avg_price = ha["close"].iloc[-2 - lookback:-1].mean()
+
+    slope_pct = ((ema_now - ema_prev) / lookback) / avg_price * 100
+    angle = math.degrees(math.atan(slope_pct))
+
+    if angle > 0.05:
+        direction = "up"
+    elif angle < -0.05:
+        direction = "down"
+    else:
+        direction = "flat"
+
+    return direction, round(angle, 4)
 
 # ====================================
 # SIGNAL DETECTION
@@ -505,9 +544,82 @@ def check_signal():
 
             state["ema9_position"] = "below"
 
+    # ──────────────────────────────────────
+    # SIGNAL 3: EMA200 SLOPE (เอียง/เปลี่ยนทิศ)
+    # ──────────────────────────────────────
+    # บอกว่า EMA200 เริ่ม "เอียง" ขึ้น/ลงชัดเจน หรือกลับทิศ
+    # ใช้คนละ guard กับ signal อื่น เพราะต้องการ alert เฉพาะตอนทิศเปลี่ยน
+
+    slope_direction, slope_angle = calc_ema200_slope(ha, lookback=3)
+
+    if slope_direction is not None:
+
+        last_slope_direction = state.get("ema200_slope_direction")
+
+        # alert เฉพาะตอนทิศเปลี่ยนจริง (ไม่ใช่ flat <-> flat) และยังไม่เคย
+        # alert ในแท่งนี้มาก่อน (กันส่งซ้ำตอน loop วนทุก 60 วิ)
+        direction_changed = (
+            last_slope_direction is not None
+            and last_slope_direction != "flat"
+            and slope_direction != "flat"
+            and slope_direction != last_slope_direction
+        )
+
+        if direction_changed and state.get("ema200_slope_alert_candle") != candle_time:
+
+            arrow = "📈" if slope_direction == "up" else "📉"
+
+            send_telegram(
+                f"{arrow} XAUUSD M15\n"
+                f"⚠️ EMA200 SLOPE เปลี่ยนทิศ → {slope_direction.upper()}\n"
+                f"Angle: {slope_angle}°\n"
+                f"EMA200: {curr['ema200']:.2f}\n"
+                f"Price: {curr['close']:.2f} ({'above' if curr['close'] > curr['ema200'] else 'below'} EMA200)\n"
+                f"Trend (EMA9/200): {trend}\n"
+                f"⏰ {candle_time}"
+            )
+
+            state["ema200_slope_alert_candle"] = candle_time
+
+        state["ema200_slope_direction"] = slope_direction
+
     # บันทึก state ที่อัปเดตแล้วกลับลงไฟล์ทุกรอบ
     save_state(state)
+    """
+    คำนวณทิศทางและมุมเอียงของ EMA200 จาก HA close
 
+    เทียบ ema200 ปัจจุบัน (แท่งปิดล่าสุด) กับ ema200 ก่อนหน้า lookback แท่ง
+    แปลงเป็นมุม (degree) โดย normalize ด้วยราคาเฉลี่ย เพื่อให้ threshold
+    ใช้ได้ stable ไม่ว่าทองจะอยู่โซนราคาไหน
+
+    Args:
+        ha (pd.DataFrame): ต้องมี column "ema200" และ "close" คำนวณแล้ว
+        lookback (int): จำนวนแท่งย้อนหลังที่ใช้เทียบ
+
+    Returns:
+        direction (str): "up" / "down" / "flat"
+        angle (float): มุมเอียงเป็น degree (ติดลบ = เอียงลง)
+    """
+    # ใช้ index -2 เป็น "ปัจจุบัน" เพราะแท่งปิดล่าสุดที่สมบูรณ์คือ iloc[-2]
+    # (เหมือน logic ใน check_signal ที่ใช้ curr = ha.iloc[-2])
+    if len(ha) < lookback + 2:
+        return None, None
+
+    ema_now = ha["ema200"].iloc[-2]
+    ema_prev = ha["ema200"].iloc[-2 - lookback]
+    avg_price = ha["close"].iloc[-2 - lookback:-1].mean()
+
+    slope_pct = ((ema_now - ema_prev) / lookback) / avg_price * 100
+    angle = math.degrees(math.atan(slope_pct))
+
+    if angle > 0.05:
+        direction = "up"
+    elif angle < -0.05:
+        direction = "down"
+    else:
+        direction = "flat"
+
+    return direction, round(angle, 4)
 
 # ====================================
 # MAIN LOOP

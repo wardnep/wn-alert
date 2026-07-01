@@ -319,7 +319,7 @@ def get_data():
         print(f"[{datetime.now()}] ⚠️ Failed to fetch data: {e}")
         return None
 
-def calc_ema200_slope(ha, lookback=3):
+def calc_ema200_slope(ha, lookback=8):
     """
     คำนวณทิศทางและมุมเอียงของ EMA200 จาก HA close
 
@@ -347,9 +347,12 @@ def calc_ema200_slope(ha, lookback=3):
     slope_pct = ((ema_now - ema_prev) / lookback) / avg_price * 100
     angle = math.degrees(math.atan(slope_pct))
 
-    if angle > 0.05:
+    # Threshold ปรับลงจาก 0.05° → 0.012° เพราะ EMA200 (span=200) ถูก smooth
+    # มาก การขยับต่อไม่กี่แท่งจึงให้มุมที่เล็กมากโดยธรรมชาติ ค่าเดิมสูงเกินไป
+    # จนแทบไม่เคยข้าม threshold ได้ (ดู log จริง ~0.014° ตอนกราฟเอียงชัดเจน)
+    if angle > 0.012:
         direction = "up"
-    elif angle < -0.05:
+    elif angle < -0.012:
         direction = "down"
     else:
         direction = "flat"
@@ -550,19 +553,20 @@ def check_signal():
     # บอกว่า EMA200 เริ่ม "เอียง" ขึ้น/ลงชัดเจน หรือกลับทิศ
     # ใช้คนละ guard กับ signal อื่น เพราะต้องการ alert เฉพาะตอนทิศเปลี่ยน
 
-    slope_direction, slope_angle = calc_ema200_slope(ha, lookback=3)
+    slope_direction, slope_angle = calc_ema200_slope(ha, lookback=8)
 
     if slope_direction is not None:
 
-        last_slope_direction = state.get("ema200_slope_direction")
+        # ใช้ "ทิศทางล่าสุดที่ไม่ใช่ flat" เป็นตัวเทียบ แทนการเทียบกับ
+        # state["ema200_slope_direction"] ตรงๆ เพราะค่าหลังอาจเป็น "flat"
+        # ได้บ่อย (เนื่องจาก EMA200 ถูก smooth มาก) ทำให้ transition แบบ
+        # up -> flat -> down ไม่เคยถูกนับว่าเปลี่ยนทิศเลยถ้าเทียบตรงๆ
+        last_nonflat_direction = state.get("ema200_slope_last_nonflat")
 
-        # alert เฉพาะตอนทิศเปลี่ยนจริง (ไม่ใช่ flat <-> flat) และยังไม่เคย
-        # alert ในแท่งนี้มาก่อน (กันส่งซ้ำตอน loop วนทุก 60 วิ)
         direction_changed = (
-            last_slope_direction is not None
-            and last_slope_direction != "flat"
+            last_nonflat_direction is not None
             and slope_direction != "flat"
-            and slope_direction != last_slope_direction
+            and slope_direction != last_nonflat_direction
         )
 
         if direction_changed and state.get("ema200_slope_alert_candle") != candle_time:
@@ -581,45 +585,15 @@ def check_signal():
 
             state["ema200_slope_alert_candle"] = candle_time
 
+        # อัปเดตค่าล่าสุดที่ไม่ใช่ flat เสมอ เพื่อใช้เทียบรอบถัดไป
+        if slope_direction != "flat":
+            state["ema200_slope_last_nonflat"] = slope_direction
+
         state["ema200_slope_direction"] = slope_direction
 
     # บันทึก state ที่อัปเดตแล้วกลับลงไฟล์ทุกรอบ
     save_state(state)
-    """
-    คำนวณทิศทางและมุมเอียงของ EMA200 จาก HA close
 
-    เทียบ ema200 ปัจจุบัน (แท่งปิดล่าสุด) กับ ema200 ก่อนหน้า lookback แท่ง
-    แปลงเป็นมุม (degree) โดย normalize ด้วยราคาเฉลี่ย เพื่อให้ threshold
-    ใช้ได้ stable ไม่ว่าทองจะอยู่โซนราคาไหน
-
-    Args:
-        ha (pd.DataFrame): ต้องมี column "ema200" และ "close" คำนวณแล้ว
-        lookback (int): จำนวนแท่งย้อนหลังที่ใช้เทียบ
-
-    Returns:
-        direction (str): "up" / "down" / "flat"
-        angle (float): มุมเอียงเป็น degree (ติดลบ = เอียงลง)
-    """
-    # ใช้ index -2 เป็น "ปัจจุบัน" เพราะแท่งปิดล่าสุดที่สมบูรณ์คือ iloc[-2]
-    # (เหมือน logic ใน check_signal ที่ใช้ curr = ha.iloc[-2])
-    if len(ha) < lookback + 2:
-        return None, None
-
-    ema_now = ha["ema200"].iloc[-2]
-    ema_prev = ha["ema200"].iloc[-2 - lookback]
-    avg_price = ha["close"].iloc[-2 - lookback:-1].mean()
-
-    slope_pct = ((ema_now - ema_prev) / lookback) / avg_price * 100
-    angle = math.degrees(math.atan(slope_pct))
-
-    if angle > 0.05:
-        direction = "up"
-    elif angle < -0.05:
-        direction = "down"
-    else:
-        direction = "flat"
-
-    return direction, round(angle, 4)
 
 # ====================================
 # MAIN LOOP

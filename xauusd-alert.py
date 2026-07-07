@@ -575,7 +575,7 @@ def check_signal():
 
             send_telegram(
                 f"{arrow} XAUUSD M15\n"
-                f"⚠️ EMA200 SLOPE เปลี่ยนทิศ → {slope_direction.upper()}\n"
+                f"⚠️ EMA200 SLOPE Changed → {slope_direction.upper()}\n"
                 f"Angle: {slope_angle}°\n"
                 f"EMA200: {curr['ema200']:.2f}\n"
                 f"Price: {curr['close']:.2f} ({'above' if curr['close'] > curr['ema200'] else 'below'} EMA200)\n"

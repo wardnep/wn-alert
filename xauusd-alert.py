@@ -638,7 +638,7 @@ if __name__ == "__main__":
             # ถ้าไม่มี heartbeat มา → แสดงว่า bot อาจ crash หรือ network มีปัญหา
             HEARTBEAT_TIMES = ["08:00", "14:00", "19:00"]
 
-            if current_time in HEARTBEAT_TIMES:
+            if current_time in HEARTBEAT_TIMES and now.weekday() < 5: # จ-ศ เท่านั้น
 
                 # เช็คว่าเวลานี้ยังไม่ได้ส่งในวันนี้
                 # (loop ทำงานทุก 60 วินาที จะผ่านเวลาเดียวกัน 1 ครั้งต่อวัน

@@ -553,43 +553,43 @@ def check_signal():
     # บอกว่า EMA200 เริ่ม "เอียง" ขึ้น/ลงชัดเจน หรือกลับทิศ
     # ใช้คนละ guard กับ signal อื่น เพราะต้องการ alert เฉพาะตอนทิศเปลี่ยน
 
-    slope_direction, slope_angle = calc_ema200_slope(ha, lookback=8)
+    # slope_direction, slope_angle = calc_ema200_slope(ha, lookback=8)
 
-    if slope_direction is not None:
+    # if slope_direction is not None:
 
-        # ใช้ "ทิศทางล่าสุดที่ไม่ใช่ flat" เป็นตัวเทียบ แทนการเทียบกับ
-        # state["ema200_slope_direction"] ตรงๆ เพราะค่าหลังอาจเป็น "flat"
-        # ได้บ่อย (เนื่องจาก EMA200 ถูก smooth มาก) ทำให้ transition แบบ
-        # up -> flat -> down ไม่เคยถูกนับว่าเปลี่ยนทิศเลยถ้าเทียบตรงๆ
-        last_nonflat_direction = state.get("ema200_slope_last_nonflat")
+    #     # ใช้ "ทิศทางล่าสุดที่ไม่ใช่ flat" เป็นตัวเทียบ แทนการเทียบกับ
+    #     # state["ema200_slope_direction"] ตรงๆ เพราะค่าหลังอาจเป็น "flat"
+    #     # ได้บ่อย (เนื่องจาก EMA200 ถูก smooth มาก) ทำให้ transition แบบ
+    #     # up -> flat -> down ไม่เคยถูกนับว่าเปลี่ยนทิศเลยถ้าเทียบตรงๆ
+    #     last_nonflat_direction = state.get("ema200_slope_last_nonflat")
 
-        direction_changed = (
-            last_nonflat_direction is not None
-            and slope_direction != "flat"
-            and slope_direction != last_nonflat_direction
-        )
+    #     direction_changed = (
+    #         last_nonflat_direction is not None
+    #         and slope_direction != "flat"
+    #         and slope_direction != last_nonflat_direction
+    #     )
 
-        if direction_changed and state.get("ema200_slope_alert_candle") != candle_time:
+    #     if direction_changed and state.get("ema200_slope_alert_candle") != candle_time:
 
-            arrow = "📈" if slope_direction == "up" else "📉"
+    #         arrow = "📈" if slope_direction == "up" else "📉"
 
-            send_telegram(
-                f"{arrow} XAUUSD M15\n"
-                f"⚠️ EMA200 SLOPE Changed → {slope_direction.upper()}\n"
-                f"Angle: {slope_angle}°\n"
-                f"EMA200: {curr['ema200']:.2f}\n"
-                f"Price: {curr['close']:.2f} ({'above' if curr['close'] > curr['ema200'] else 'below'} EMA200)\n"
-                f"Trend (EMA9/200): {trend}\n"
-                f"⏰ {candle_time}"
-            )
+    #         send_telegram(
+    #             f"{arrow} XAUUSD M15\n"
+    #             f"⚠️ EMA200 SLOPE Changed → {slope_direction.upper()}\n"
+    #             f"Angle: {slope_angle}°\n"
+    #             f"EMA200: {curr['ema200']:.2f}\n"
+    #             f"Price: {curr['close']:.2f} ({'above' if curr['close'] > curr['ema200'] else 'below'} EMA200)\n"
+    #             f"Trend (EMA9/200): {trend}\n"
+    #             f"⏰ {candle_time}"
+    #         )
 
-            state["ema200_slope_alert_candle"] = candle_time
+    #         state["ema200_slope_alert_candle"] = candle_time
 
-        # อัปเดตค่าล่าสุดที่ไม่ใช่ flat เสมอ เพื่อใช้เทียบรอบถัดไป
-        if slope_direction != "flat":
-            state["ema200_slope_last_nonflat"] = slope_direction
+    #     # อัปเดตค่าล่าสุดที่ไม่ใช่ flat เสมอ เพื่อใช้เทียบรอบถัดไป
+    #     if slope_direction != "flat":
+    #         state["ema200_slope_last_nonflat"] = slope_direction
 
-        state["ema200_slope_direction"] = slope_direction
+    #     state["ema200_slope_direction"] = slope_direction
 
     # บันทึก state ที่อัปเดตแล้วกลับลงไฟล์ทุกรอบ
     save_state(state)

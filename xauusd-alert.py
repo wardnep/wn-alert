@@ -62,6 +62,10 @@ STATE_FILE = "state.json"
 SYMBOL   = "XAUUSD"
 EXCHANGE = "OANDA"
 
+# ปิด alert สองประเภทนี้ไว้ชั่วคราว; time alert และ heartbeat ยังทำงานตามปกติ
+ENABLE_EMA_ALERTS = False
+ENABLE_PRICE_ALERTS = False
+
 # [แก้ไข #3] ย้าย price_levels ออกมาไว้ใน CONFIG ให้แก้ง่าย
 def load_price_levels(timeframe: str):
     """โหลด price levels ที่ active=1 จาก MySQL"""
@@ -159,7 +163,7 @@ def create_tv_connection():
         return TvDatafeed(TV_USERNAME, TV_PASSWORD)
     return TvDatafeed()
 
-tv = create_tv_connection()
+tv = None
 
 # นับจำนวนครั้งที่ fetch ล้มเหลวติดต่อกัน ถ้าเกิน threshold จะ reconnect
 _consecutive_failures = 0
@@ -312,6 +316,9 @@ def get_data(interval, n_bars, label):
     global tv, _consecutive_failures
 
     try:
+        if tv is None:
+            tv = create_tv_connection()
+
         df = tv.get_hist(
             symbol=SYMBOL,
             exchange=EXCHANGE,
@@ -549,22 +556,20 @@ if __name__ == "__main__":
                 send_telegram(f"💓 XAU Alert Alive\n")
                 state["heartbeat_sent"].append(current_time)
 
-            df_15m = get_data_15m()
-            df_1h = get_data_1h()
+            if ENABLE_EMA_ALERTS or ENABLE_PRICE_ALERTS:
+                df_15m = get_data_15m()
+                df_1h = get_data_1h() if ENABLE_PRICE_ALERTS else None
 
-            check_m15_ema_signal(state, df_15m)
+                if ENABLE_EMA_ALERTS:
+                    check_m15_ema_signal(state, df_15m)
 
-            price_levels_15m = load_price_levels('15m')
-            if not price_levels_15m:
-                print(f"[{datetime.now()}] ⚠️ No active price levels")
-            else:
-                check_price_alert(state, price_levels_15m, df_15m, '15m')
-
-            price_levels_1h = load_price_levels('1h')
-            if not price_levels_1h:
-                print(f"[{datetime.now()}] ⚠️ No active price levels")
-            else:
-                check_price_alert(state, price_levels_1h, df_1h, '1h')
+                if ENABLE_PRICE_ALERTS:
+                    for timeframe, df in (("15m", df_15m), ("1h", df_1h)):
+                        price_levels = load_price_levels(timeframe)
+                        if not price_levels:
+                            print(f"[{datetime.now()}] ⚠️ No active price levels")
+                        else:
+                            check_price_alert(state, price_levels, df, timeframe)
 
             # save ครั้งเดียวหลังจากทุก signal ถูกตรวจสอบแล้ว
             save_state(state)

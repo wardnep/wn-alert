@@ -1,0 +1,12 @@
+{
+  "ema200_signal": null,
+  "ema9_position": null,
+  "last_alert_candle": null,
+  "heartbeat_sent": [],
+  "heartbeat_date": "2026-11-18",
+  "time_alert_sent": [
+    "1:2026-11-18 10:34",
+    "1:2026-11-18 10:39"
+  ],
+  "time_alert_date": "2026-11-18"
+}

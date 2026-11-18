@@ -16,7 +16,7 @@ import json          # ใช้อ่าน/เขียน state.json
 import os            # ใช้อ่าน environment variable และเช็คไฟล์
 import requests      # ใช้เรียก Telegram API (HTTP POST)
 import pandas as pd  # ใช้จัดการ DataFrame ของข้อมูลราคา
-import sqlite3       # ใช้เชื่อมต่อ SQLite เพื่อโหลด price levels
+import pymysql       # ใช้เชื่อมต่อ MySQL เพื่อโหลดและอัปเดต alerts
 
 from datetime import datetime, timedelta       # ใช้แสดงเวลาใน log และเช็คเวลา heartbeat
 from zoneinfo import ZoneInfo       # ใช้แปลงเวลาเป็น timezone Asia/Bangkok
@@ -36,7 +36,26 @@ TELEGRAM_TOKEN   = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 TV_USERNAME      = os.getenv("TV_USERNAME")
 TV_PASSWORD      = os.getenv("TV_PASSWORD")
-JOURNEY_SQLITE   = os.getenv("JOURNEY_SQLITE", "")
+DB_HOST          = os.getenv("DB_HOST", "127.0.0.1")
+DB_PORT          = int(os.getenv("DB_PORT", "3306"))
+DB_DATABASE      = os.getenv("DB_DATABASE", "")
+DB_USERNAME      = os.getenv("DB_USERNAME", "")
+DB_PASSWORD      = os.getenv("DB_PASSWORD", "")
+
+def mysql_connection():
+    """เปิด connection ไปยังฐานข้อมูล MySQL เดียวกับ Laravel"""
+    if not DB_DATABASE or not DB_USERNAME:
+        raise RuntimeError("DB_DATABASE and DB_USERNAME must be set in wn-alert/.env")
+    return pymysql.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        user=DB_USERNAME,
+        password=DB_PASSWORD,
+        database=DB_DATABASE,
+        charset="utf8mb4",
+        connect_timeout=10,
+        cursorclass=pymysql.cursors.DictCursor,
+    )
 
 STATE_FILE = "state.json"
 
@@ -45,24 +64,88 @@ EXCHANGE = "OANDA"
 
 # [แก้ไข #3] ย้าย price_levels ออกมาไว้ใน CONFIG ให้แก้ง่าย
 def load_price_levels(timeframe: str):
-    """โหลด price levels ที่ active=1 จาก SQLite"""
+    """โหลด price levels ที่ active=1 จาก MySQL"""
     try:
-        with sqlite3.connect(JOURNEY_SQLITE) as conn:
-            rows = conn.execute(
-                "SELECT price, message FROM price_levels WHERE active = 1 AND time_frame = ? ORDER BY price", (timeframe,)
-            ).fetchall()
-        return [{"price": row[0], "message": row[1]} for row in rows]
+        with mysql_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT price, message FROM price_levels WHERE active = 1 AND time_frame = %s ORDER BY price",
+                    (timeframe,),
+                )
+                rows = cursor.fetchall()
+        return [{"price": row["price"], "message": row["message"]} for row in rows]
 
     except Exception as e:
         print(f"[{datetime.now()}] ⚠️ Failed to load price levels: {e}")
         return []
 
-def remove_price_level(price: float):
-    with sqlite3.connect(JOURNEY_SQLITE) as conn:
-        conn.execute(
-            "UPDATE price_levels SET active = 0 WHERE price = ?",
-            (f"{price:g}",)
+def load_time_alerts():
+    """โหลด time alerts ที่ยัง active จาก MySQL"""
+    try:
+        with mysql_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT id, alert_time, end_time, message FROM time_alerts WHERE active = 1 ORDER BY alert_time, id"
+                )
+                rows = cursor.fetchall()
+        return [{
+            "id": row["id"],
+            "start_time": row["alert_time"],
+            "end_time": row["end_time"],
+            "message": row["message"] or "",
+        } for row in rows]
+    except Exception as e:
+        print(f"[{datetime.now()}] ⚠️ Failed to load time alerts: {e}")
+        return []
+
+def check_time_alerts(state, now):
+    """เตือนก่อนแท่ง 5m เปิดทุก :04, :09, ... ในช่วงเวลาที่ตั้งไว้"""
+    if now.minute % 5 != 4:
+        return
+
+    current_date = now.strftime("%Y-%m-%d")
+    current_time = now.strftime("%H:%M")
+    if state.get("time_alert_date") != current_date:
+        state["time_alert_date"] = current_date
+        state["time_alert_sent"] = []
+
+    sent_ids = set(state.get("time_alert_sent", []))
+    for alert in load_time_alerts():
+        start_time = alert["start_time"]
+        end_time = alert["end_time"]
+        if not start_time or not end_time or not (start_time <= current_time <= end_time):
+            continue
+
+        sent_key = f"{alert['id']}:{current_date} {current_time}"
+        if sent_key in sent_ids:
+            continue
+
+        message = alert["message"].strip()
+        suffix = f"\n📋 {message}" if message else "\n📋 ตรวจสอบ key level ก่อนแท่ง 5m เปิด"
+        next_candle = (now.replace(second=0, microsecond=0) + timedelta(minutes=1)).strftime("%H:%M")
+        send_telegram(
+            f"⏰ XAUUSD 5m Reminder\n"
+            f"🕒 {current_time} (เวลาไทย)\n"
+            f"แท่ง 5m ถัดไปจะเปิดเวลา {next_candle}{suffix}"
         )
+        sent_ids.add(sent_key)
+
+    state["time_alert_sent"] = sorted(sent_ids)
+
+def sleep_until_next_minute():
+    """รอถึงต้นนาทีถัดไปเพื่อให้เช็กเวลาที่ตั้งไว้ได้สม่ำเสมอ"""
+    now = datetime.now(ZoneInfo("Asia/Bangkok"))
+    next_run = now.replace(second=0, microsecond=0) + timedelta(minutes=1)
+    wait_seconds = (next_run - now).total_seconds()
+    time.sleep(max(0, wait_seconds))
+
+def remove_price_level(price: float):
+    with mysql_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "UPDATE price_levels SET active = 0 WHERE price = %s",
+                (f"{price:g}",)
+            )
         conn.commit()
 
 # ====================================
@@ -124,7 +207,9 @@ def load_state():
         "ema9_position":    None,
         "last_alert_candle": None,
         "heartbeat_sent":   [],
-        "heartbeat_date":   ""
+        "heartbeat_date":   "",
+        "time_alert_sent":  [],
+        "time_alert_date":  ""
     }
 
     if not os.path.exists(STATE_FILE):
@@ -445,6 +530,9 @@ if __name__ == "__main__":
             # ────────────────────────────────
             state = load_state()
 
+            # time alert ทำงานก่อน fetch ราคา เพื่อไม่ให้รอ TradingView แล้วพลาดนาทีแจ้งเตือน
+            check_time_alerts(state, now)
+
             # ────────────────────────────────
             # HEARTBEAT — รีเซ็ตรายวัน
             # ────────────────────────────────
@@ -484,5 +572,4 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"[{datetime.now()}] ❌ Main loop error: {e}")
 
-        # sleep_until_next_quarter()
-        time.sleep(60)
+        sleep_until_next_minute()

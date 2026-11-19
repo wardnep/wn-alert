@@ -8,7 +8,7 @@
 #      - EMA9 ตัด EMA200 (บอก trend เปลี่ยน)
 #      - HA Close ตัด EMA9 (บอก entry/exit)
 #   4. ส่ง alert ไป Telegram เมื่อเกิด signal
-#   5. ส่ง heartbeat ทุก 08:00, 14:00, 19:00 เพื่อยืนยันว่า bot ยังทำงานอยู่
+#   5. ส่ง time alert ตามช่วงเวลาที่ตั้งไว้ในฐานข้อมูล
 # ==============================================================================
 
 import time          # ใช้สำหรับ sleep() หยุดรอระหว่าง loop
@@ -18,7 +18,7 @@ import requests      # ใช้เรียก Telegram API (HTTP POST)
 import pandas as pd  # ใช้จัดการ DataFrame ของข้อมูลราคา
 import pymysql       # ใช้เชื่อมต่อ MySQL เพื่อโหลดและอัปเดต alerts
 
-from datetime import datetime, timedelta       # ใช้แสดงเวลาใน log และเช็คเวลา heartbeat
+from datetime import datetime, timedelta       # ใช้แสดงเวลาใน log และคำนวณเวลา alert
 from zoneinfo import ZoneInfo       # ใช้แปลงเวลาเป็น timezone Asia/Bangkok
 
 from dotenv import load_dotenv      # ใช้โหลด .env file เข้า environment
@@ -62,7 +62,7 @@ STATE_FILE = "state.json"
 SYMBOL   = "XAUUSD"
 EXCHANGE = "OANDA"
 
-# ปิด alert สองประเภทนี้ไว้ชั่วคราว; time alert และ heartbeat ยังทำงานตามปกติ
+# ปิด EMA และ price alert; time alert จากฐานข้อมูลยังทำงานตามปกติ
 ENABLE_EMA_ALERTS = False
 ENABLE_PRICE_ALERTS = False
 
@@ -210,8 +210,6 @@ def load_state():
         "ema200_signal":    None,
         "ema9_position":    None,
         "last_alert_candle": None,
-        "heartbeat_sent":   [],
-        "heartbeat_date":   "",
         "time_alert_sent":  [],
         "time_alert_date":  ""
     }
@@ -522,15 +520,12 @@ def sleep_until_next_quarter():
 
 if __name__ == "__main__":
 
-    send_telegram("🚀 XAU Alert Started")
+    # send_telegram("🚀 XAU Alert Started")
 
     while True:
 
         try:
             now          = datetime.now(ZoneInfo("Asia/Bangkok"))
-            current_time = now.strftime("%H:%M")
-            current_date = now.strftime("%Y-%m-%d")
-
             # ────────────────────────────────
             # โหลด state ครั้งเดียวต่อรอบ
             # [แก้ไข #1] ย้ายมาไว้ที่นี่แทนให้แต่ละฟังก์ชันโหลดเอง
@@ -539,22 +534,6 @@ if __name__ == "__main__":
 
             # time alert ทำงานก่อน fetch ราคา เพื่อไม่ให้รอ TradingView แล้วพลาดนาทีแจ้งเตือน
             check_time_alerts(state, now)
-
-            # ────────────────────────────────
-            # HEARTBEAT — รีเซ็ตรายวัน
-            # ────────────────────────────────
-            if current_date != state.get("heartbeat_date", ""):
-                state["heartbeat_sent"] = []
-                state["heartbeat_date"] = current_date
-
-            # ────────────────────────────────
-            # HEARTBEAT — ส่งตามเวลาที่กำหนด
-            # ────────────────────────────────
-            HEARTBEAT_TIMES = ["08:00", "14:00", "19:00"]
-
-            if current_time in HEARTBEAT_TIMES and current_time not in state["heartbeat_sent"]:
-                send_telegram(f"💓 XAU Alert Alive\n")
-                state["heartbeat_sent"].append(current_time)
 
             if ENABLE_EMA_ALERTS or ENABLE_PRICE_ALERTS:
                 df_15m = get_data_15m()

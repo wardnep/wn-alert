@@ -83,63 +83,55 @@ def load_price_levels(timeframe: str):
         print(f"[{datetime.now()}] ⚠️ Failed to load price levels: {e}")
         return []
 
-def load_time_alerts():
-    """โหลด time alerts ที่ยัง active จาก MySQL"""
+def is_time_alert_enabled():
+    """อ่านสถานะสวิตช์ time alert จาก MySQL"""
     try:
         with mysql_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(
-                    "SELECT id, alert_time, end_time, message FROM time_alerts WHERE active = 1 ORDER BY alert_time, id"
+                    "SELECT enabled FROM time_alert_settings WHERE id = 1"
                 )
-                rows = cursor.fetchall()
-        return [{
-            "id": row["id"],
-            "start_time": row["alert_time"],
-            "end_time": row["end_time"],
-            "message": row["message"] or "",
-        } for row in rows]
+                row = cursor.fetchone()
+        return bool(row and row["enabled"])
     except Exception as e:
-        print(f"[{datetime.now()}] ⚠️ Failed to load time alerts: {e}")
-        return []
+        print(f"[{datetime.now()}] ⚠️ Failed to load time alert setting: {e}")
+        return False
 
 def check_time_alerts(state, now):
-    """เตือนก่อนแท่ง 5m เปิดทุก :04, :09, ... ในช่วงเวลาที่ตั้งไว้"""
-    if now.minute % 5 != 4:
+    """เตือน 30 วินาทีก่อนแท่ง 5m ปิด เมื่อเปิดสวิตช์ไว้"""
+    if now.minute % 5 != 4 or now.second < 30:
+        return
+
+    if not is_time_alert_enabled():
         return
 
     current_date = now.strftime("%Y-%m-%d")
-    current_time = now.strftime("%H:%M")
     if state.get("time_alert_date") != current_date:
         state["time_alert_date"] = current_date
         state["time_alert_sent"] = []
 
     sent_ids = set(state.get("time_alert_sent", []))
-    for alert in load_time_alerts():
-        start_time = alert["start_time"]
-        end_time = alert["end_time"]
-        if not start_time or not end_time or not (start_time <= current_time <= end_time):
-            continue
+    next_close = now.replace(second=0, microsecond=0) + timedelta(minutes=1)
+    sent_key = next_close.strftime("%Y-%m-%d %H:%M")
+    if sent_key in sent_ids:
+        return
 
-        sent_key = f"{alert['id']}:{current_date} {current_time}"
-        if sent_key in sent_ids:
-            continue
-
-        message = alert["message"].strip()
-        suffix = f"\n📋 {message}" if message else "\n📋 ตรวจสอบ key level ก่อนแท่ง 5m เปิด"
-        next_candle = (now.replace(second=0, microsecond=0) + timedelta(minutes=1)).strftime("%H:%M")
-        send_telegram(
-            f"⏰ XAUUSD 5m Reminder\n"
-            f"🕒 {current_time} (เวลาไทย)\n"
-            f"แท่ง 5m ถัดไปจะเปิดเวลา {next_candle}{suffix}"
-        )
-        sent_ids.add(sent_key)
+    send_telegram(
+        f"⏰ XAUUSD 5m Reminder\n"
+        f"🕒 อีก {60 - now.second} วินาที แท่ง 5m จะปิดเวลา {next_close.strftime('%H:%M')} (เวลาไทย)\n"
+        f"📋 ตรวจสอบ key level"
+    )
+    sent_ids.add(sent_key)
 
     state["time_alert_sent"] = sorted(sent_ids)
 
-def sleep_until_next_minute():
-    """รอถึงต้นนาทีถัดไปเพื่อให้เช็กเวลาที่ตั้งไว้ได้สม่ำเสมอ"""
+def sleep_until_next_check():
+    """ตรวจทุก 30 วินาที เพื่อให้จับเวลาส่งแจ้งเตือน :04:30 ได้"""
     now = datetime.now(ZoneInfo("Asia/Bangkok"))
-    next_run = now.replace(second=0, microsecond=0) + timedelta(minutes=1)
+    if now.second < 30:
+        next_run = now.replace(second=30, microsecond=0)
+    else:
+        next_run = now.replace(second=0, microsecond=0) + timedelta(minutes=1)
     wait_seconds = (next_run - now).total_seconds()
     time.sleep(max(0, wait_seconds))
 
@@ -556,6 +548,6 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"[{datetime.now()}] ❌ Main loop error: {e}")
 
-        sleep_until_next_minute()
+        sleep_until_next_check()
 
 ######
